@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Fashion Styling App",
+    "slug": "fashion-styling-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.fashionstylingapp",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs access to camera to take photos of your outfits.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to photo library to select outfit images.",
+        "NSMicrophoneUsageDescription": "This app needs access to microphone for video recording."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF"
+      },
+      "package": "com.yourcompany.fashionstylingapp",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-image-picker",
+      "expo-media-library"
+    ]
+  }
+} 
