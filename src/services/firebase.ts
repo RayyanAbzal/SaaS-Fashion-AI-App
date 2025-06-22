@@ -1,30 +1,34 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { FirebaseConfig } from '@/types';
+import { getAuth } from 'firebase/auth';
+import * as Auth from 'firebase/auth';
 
-// Your Firebase configuration
-const firebaseConfig: FirebaseConfig = {
-  apiKey: "AIzaSyCodfRipbDScgI2FWwSCNLKIpMZh2_ffgk",
-  authDomain: "ai-fashion-stylist-efb69.firebaseapp.com",
-  projectId: "ai-fashion-stylist-efb69",
-  storageBucket: "ai-fashion-stylist-efb69.firebasestorage.app",
-  messagingSenderId: "175207214105",
-  appId: "1:175207214105:web:80f33e9a4976acf90f8e88"
+// Diagnostic log to inspect the auth module
+console.log('Available exports from "firebase/auth":', Object.keys(Auth));
+
+const firebaseConfig = {
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app;
+if (!getApps().length) {
+  app = initializeApp(firebaseConfig);
+} else {
+  app = getApp();
+}
 
-// Initialize Auth (will use default persistence)
+// Initialize auth
 const auth = getAuth(app);
 
-// Initialize Firestore
 const db = getFirestore(app);
-
-// Initialize Storage
 const storage = getStorage(app);
 
-export { app, auth, db, storage };
-export default app; 
+export { db, auth, storage };
+export default app;

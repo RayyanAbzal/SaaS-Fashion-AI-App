@@ -12,10 +12,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, CameraType } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/colors';
-import { CameraPhoto } from '@/types';
+import { Colors } from '../constants/colors';
+import { CameraPhoto } from '../types';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../types';
 
 const { width } = Dimensions.get('window');
+
+type CameraScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Camera'>;
 
 export default function CameraScreen() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
@@ -23,6 +28,7 @@ export default function CameraScreen() {
   const [capturedImage, setCapturedImage] = useState<CameraPhoto | null>(null);
   const [isCameraReady, setIsCameraReady] = useState(false);
   const cameraRef = useRef<Camera>(null);
+  const navigation = useNavigation<CameraScreenNavigationProp>();
 
   useEffect(() => {
     (async () => {
@@ -72,7 +78,7 @@ export default function CameraScreen() {
         uri: asset.uri,
         width: asset.width,
         height: asset.height,
-        base64: asset.base64,
+        base64: asset.base64 || undefined,
       };
       setCapturedImage(cameraPhoto);
     }
@@ -82,17 +88,22 @@ export default function CameraScreen() {
     setCapturedImage(null);
   };
 
-  const savePicture = () => {
-    // TODO: Implement save to wardrobe functionality
-    Alert.alert('Success', 'Picture saved to wardrobe!');
-    setCapturedImage(null);
+  const handleCapture = async () => {
+    if (cameraRef.current) {
+      const photo = await cameraRef.current.takePictureAsync({ base64: true });
+      navigation.navigate('Wardrobe', { capturedImageUri: photo.uri });
+    }
+  };
+
+  const handleCancel = () => {
+    navigation.goBack();
   };
 
   if (hasPermission === null) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
-          <Text>Requesting camera permission...</Text>
+          <Text style={styles.loadingText}>Requesting camera permission...</Text>
         </View>
       </SafeAreaView>
     );
@@ -102,11 +113,14 @@ export default function CameraScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centerContent}>
-          <Ionicons name="camera-off" size={80} color={Colors.textSecondary} />
+          <Ionicons name="camera" size={80} color={Colors.textSecondary} />
           <Text style={styles.permissionText}>No access to camera</Text>
           <Text style={styles.permissionSubtext}>
             Please enable camera permissions in your device settings
           </Text>
+          <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
+            <Text style={styles.cancelButtonText}>Go Back</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -119,12 +133,12 @@ export default function CameraScreen() {
           <Image source={{ uri: capturedImage.uri }} style={styles.preview} />
           <View style={styles.previewButtons}>
             <TouchableOpacity style={styles.previewButton} onPress={retakePicture}>
-              <Ionicons name="refresh" size={24} color={Colors.textInverse} />
+              <Ionicons name="refresh" size={24} color={Colors.text} />
               <Text style={styles.previewButtonText}>Retake</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.previewButton, styles.saveButton]} onPress={savePicture}>
-              <Ionicons name="checkmark" size={24} color={Colors.textInverse} />
-              <Text style={styles.previewButtonText}>Save</Text>
+            <TouchableOpacity style={[styles.previewButton, styles.saveButton]} onPress={handleCapture}>
+              <Ionicons name="checkmark" size={24} color={Colors.text} />
+              <Text style={styles.previewButtonText}>Use Photo</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -134,6 +148,18 @@ export default function CameraScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity style={styles.button} onPress={handleCapture}>
+            <Ionicons name="camera" size={40} color="white" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={handleCancel}>
+            <Ionicons name="close" size={40} color="white" />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.headerTitle}>Take Photo</Text>
+      </View>
+      
       <Camera
         ref={cameraRef}
         style={styles.camera}
@@ -146,10 +172,10 @@ export default function CameraScreen() {
               style={styles.flipButton}
               onPress={() => setType(type === CameraType.back ? CameraType.front : CameraType.back)}
             >
-              <Ionicons name="camera-reverse" size={24} color={Colors.textInverse} />
+              <Ionicons name="camera-reverse" size={24} color={Colors.text} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.galleryButton} onPress={pickImage}>
-              <Ionicons name="images" size={24} color={Colors.textInverse} />
+              <Ionicons name="images" size={24} color={Colors.text} />
             </TouchableOpacity>
           </View>
 
@@ -173,11 +199,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: Colors.background,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.text,
+  },
   centerContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: Colors.textSecondary,
   },
   permissionText: {
     fontSize: 20,
@@ -190,6 +233,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 10,
+    marginBottom: 20,
   },
   camera: {
     flex: 1,
@@ -205,18 +249,24 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   flipButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 25,
-    padding: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.backgroundCard,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   galleryButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    borderRadius: 25,
-    padding: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.backgroundCard,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   bottomControls: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 40,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -225,11 +275,11 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.backgroundCard,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 4,
-    borderColor: Colors.textInverse,
+    borderColor: Colors.text,
   },
   captureButtonDisabled: {
     opacity: 0.5,
@@ -238,39 +288,65 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: Colors.textInverse,
+    backgroundColor: Colors.text,
   },
   previewContainer: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
   preview: {
     flex: 1,
-    width: width,
+    width: '100%',
   },
   previewButtons: {
-    position: 'absolute',
-    bottom: 50,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    justifyContent: 'space-around',
     paddingHorizontal: 20,
+    paddingVertical: 20,
+    backgroundColor: Colors.background,
   },
   previewButton: {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderRadius: 25,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    backgroundColor: Colors.backgroundCard,
+    minWidth: 120,
+    justifyContent: 'center',
   },
   saveButton: {
-    backgroundColor: Colors.success,
+    backgroundColor: Colors.primary,
   },
   previewButtonText: {
-    color: Colors.textInverse,
     marginLeft: 8,
     fontSize: 16,
     fontWeight: '600',
+    color: Colors.text,
+  },
+  cancelButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundCard,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  button: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundCard,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 }); 

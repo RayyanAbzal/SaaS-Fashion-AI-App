@@ -2,25 +2,25 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
+  StyleSheet,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { Colors, Gradients } from '@/constants/colors';
 import { AuthService } from '@/services/authService';
-import { Colors } from '@/constants/colors';
 
 export default function LoginScreen() {
-  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleAuth = async () => {
     if (!email || !password) {
@@ -34,15 +34,19 @@ export default function LoginScreen() {
     }
 
     setIsLoading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     try {
       if (isSignUp) {
         await AuthService.signUp(email, password, displayName);
-        Alert.alert('Success', 'Account created successfully!');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
         await AuthService.signIn(email, password);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.message || 'Authentication failed');
     } finally {
       setIsLoading(false);
     }
@@ -50,75 +54,97 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+      <View style={[styles.background, { backgroundColor: Colors.gradientStart }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.content}
+        >
           <View style={styles.header}>
-            <Ionicons name="shirt" size={80} color={Colors.primary} />
-            <Text style={styles.title}>Fashion Styling</Text>
-            <Text style={styles.subtitle}>Your Personal Style Assistant</Text>
+            <View style={styles.logoContainer}>
+              <Ionicons name="sparkles" size={60} color={Colors.text} />
+            </View>
+            <Text style={styles.appTitle}>StyleMate</Text>
+            <Text style={styles.tagline}>Your AI Fashion Bestie</Text>
           </View>
 
-          <View style={styles.form}>
-            {isSignUp && (
+          <View style={styles.formContainer}>
+            <View style={[styles.form, { backgroundColor: Colors.backgroundGlass }]}>
+              <Text style={styles.formTitle}>
+                {isSignUp ? 'Join the Style Revolution' : 'Welcome Back!'}
+              </Text>
+              
+              {isSignUp && (
+                <View style={styles.inputContainer}>
+                  <Ionicons name="person" size={20} color={Colors.textSecondary} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Full Name"
+                    placeholderTextColor={Colors.textTertiary}
+                    value={displayName}
+                    onChangeText={setDisplayName}
+                    autoCapitalize="words"
+                  />
+                </View>
+              )}
+
               <View style={styles.inputContainer}>
-                <Ionicons name="person-outline" size={20} color={Colors.textSecondary} />
+                <Ionicons name="mail" size={20} color={Colors.textSecondary} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Full Name"
-                  value={displayName}
-                  onChangeText={setDisplayName}
-                  autoCapitalize="words"
+                  placeholder="Email"
+                  placeholderTextColor={Colors.textTertiary}
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
                 />
               </View>
-            )}
 
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color={Colors.textSecondary} />
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
+              <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed" size={20} color={Colors.textSecondary} />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  placeholderTextColor={Colors.textTertiary}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.authButton, isLoading && styles.authButtonDisabled]}
+                onPress={handleAuth}
+                disabled={isLoading}
+              >
+                <View style={[styles.authButtonGradient, { backgroundColor: Colors.gradientEnd }]}>
+                  <Text style={styles.authButtonText}>
+                    {isLoading ? 'Loading...' : (isSignUp ? 'Sign Up' : 'Sign In')}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.toggleButton}
+                onPress={() => {
+                  setIsSignUp(!isSignUp);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+              >
+                <Text style={styles.toggleText}>
+                  {isSignUp ? 'Already have an account? Sign In' : 'New to StyleMate? Sign Up'}
+                </Text>
+              </TouchableOpacity>
             </View>
-
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color={Colors.textSecondary} />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.button, isLoading && styles.buttonDisabled]}
-              onPress={handleAuth}
-              disabled={isLoading}
-            >
-              <Text style={styles.buttonText}>
-                {isLoading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.switchButton}
-              onPress={() => setIsSignUp(!isSignUp)}
-            >
-              <Text style={styles.switchText}>
-                {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
-              </Text>
-            </TouchableOpacity>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              By continuing, you agree to our Terms & Privacy Policy
+            </Text>
+          </View>
+        </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -126,70 +152,122 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
-  keyboardView: {
+  background: {
     flex: 1,
   },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
+  content: {
+    flex: 1,
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 50,
+    paddingTop: 60,
   },
-  title: {
-    fontSize: 32,
+  logoContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: Colors.backgroundGlass,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  appTitle: {
+    fontSize: 36,
     fontWeight: 'bold',
     color: Colors.text,
-    marginTop: 20,
+    marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 16,
+  tagline: {
+    fontSize: 18,
     color: Colors.textSecondary,
-    marginTop: 8,
+    textAlign: 'center',
+  },
+  formContainer: {
+    flex: 1,
+    justifyContent: 'center',
   },
   form: {
-    width: '100%',
+    padding: 30,
+    borderRadius: 20,
+    alignItems: 'center',
+  },
+  formTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 30,
+    textAlign: 'center',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.backgroundSecondary,
     borderRadius: 12,
-    marginBottom: 16,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    marginBottom: 16,
+    width: '100%',
+    height: 50,
   },
   input: {
     flex: 1,
-    marginLeft: 12,
     fontSize: 16,
     color: Colors.text,
+    marginLeft: 12,
   },
-  button: {
-    backgroundColor: Colors.primary,
+  authButton: {
+    width: '100%',
+    height: 50,
     borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
+    marginBottom: 16,
+    overflow: 'hidden',
   },
-  buttonDisabled: {
+  authButtonDisabled: {
     opacity: 0.6,
   },
-  buttonText: {
-    color: Colors.textInverse,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  switchButton: {
+  authButtonGradient: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
   },
-  switchText: {
-    color: Colors.primary,
+  authButtonText: {
     fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.backgroundSecondary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+    width: '100%',
+  },
+  googleButtonText: {
+    fontSize: 16,
+    color: Colors.text,
+    marginLeft: 8,
+  },
+  toggleButton: {
+    paddingVertical: 8,
+  },
+  toggleText: {
+    fontSize: 14,
+    color: Colors.primary,
+    textDecorationLine: 'underline',
+  },
+  footer: {
+    paddingBottom: 20,
+  },
+  footerText: {
+    fontSize: 12,
+    color: Colors.textTertiary,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 }); 

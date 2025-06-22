@@ -8,10 +8,10 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { User, UserPreferences } from '@/types';
+import { User, UserPreferences, BrandPreferences, StyleProfile, Subscription } from '../types';
 
 export class AuthService {
-  static async signUp(email: string, password: string, displayName: string): Promise<User> {
+  static async signUp(email: string, password: string, displayName: string): Promise<FirebaseUser> {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
@@ -24,7 +24,7 @@ export class AuthService {
         id: firebaseUser.uid,
         email: firebaseUser.email!,
         displayName,
-        photoURL: firebaseUser.photoURL || undefined,
+        ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
         createdAt: new Date(),
         updatedAt: new Date(),
         preferences: {
@@ -38,68 +38,96 @@ export class AuthService {
           budget: {
             min: 0,
             max: 1000,
+            currency: 'NZD',
+          },
+          preferredRetailers: [],
+          notificationSettings: {
+            outfitReminders: true,
+            styleTips: true,
+            newArrivals: true,
+            priceAlerts: true,
+          },
+          privacySettings: {
+            shareOutfits: false,
+            showProfile: true,
+            allowAnalytics: true,
           },
         },
+        styleProfile: {
+          personality: 'casual',
+          bodyType: 'rectangle',
+          skinTone: 'neutral',
+          height: 170,
+          weight: 70,
+          measurements: {
+            bust: 90,
+            waist: 75,
+            hips: 95,
+            inseam: 80,
+          },
+          styleGoals: [],
+          occasions: ['casual', 'work'],
+          climate: 'temperate',
+        },
+        brandPreferences: {
+          love: [],
+          avoid: [],
+          preferredCategories: [],
+          budget: {
+            min: 0,
+            max: 1000,
+            currency: 'NZD',
+          },
+          preferredPriceRanges: {},
+          brandRatings: {},
+          lastUpdated: new Date(),
+        },
+        subscription: {
+          plan: 'free',
+          startDate: new Date(),
+          features: ['basic-outfits', 'wardrobe-management'],
+        },
       };
-
-      try {
-        await setDoc(doc(db, 'users', firebaseUser.uid), userData);
-      } catch (firestoreError: any) {
-        console.warn('Failed to save user data to Firestore:', firestoreError.message);
-        // Continue with auth even if Firestore fails
-      }
-
-      return userData;
+      
+      await setDoc(doc(db, 'users', firebaseUser.uid), userData);
+      return firebaseUser;
     } catch (error: any) {
-      throw new Error(error.message);
+      // Provide more specific error messages
+      if (error.code === 'auth/email-already-in-use') {
+        throw new Error('An account with this email already exists. Please sign in instead.');
+      } else if (error.code === 'auth/user-not-found') {
+        throw new Error('No account found with this email. Please check your email or sign up.');
+      } else if (error.code === 'auth/wrong-password') {
+        throw new Error('Incorrect password. Please try again.');
+      } else if (error.code === 'auth/invalid-email') {
+        throw new Error('Please enter a valid email address.');
+      } else if (error.code === 'auth/weak-password') {
+        throw new Error('Password should be at least 6 characters long.');
+      } else {
+        throw new Error(error.message || 'Authentication failed. Please try again.');
+      }
     }
   }
 
-  static async signIn(email: string, password: string): Promise<User> {
+  static async signIn(email: string, password: string): Promise<FirebaseUser> {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-      
-      // Try to get user data from Firestore
-      try {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          return userDoc.data() as User;
-        }
-      } catch (firestoreError: any) {
-        console.warn('Failed to get user data from Firestore:', firestoreError.message);
-      }
-      
-      // If Firestore fails, create a basic user object
-      const basicUser: User = {
-        id: firebaseUser.uid,
-        email: firebaseUser.email!,
-        displayName: firebaseUser.displayName || 'User',
-        photoURL: firebaseUser.photoURL || undefined,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        preferences: {
-          stylePreferences: [],
-          favoriteColors: [],
-          sizePreferences: {
-            top: '',
-            bottom: '',
-            shoes: '',
-          },
-          budget: {
-            min: 0,
-            max: 1000,
-          },
-        },
-      };
-      
-      return basicUser;
+      return userCredential.user;
     } catch (error: any) {
-      throw new Error(error.message);
+      // Provide more specific error messages
+      if (error.code === 'auth/user-not-found') {
+        throw new Error('No account found with this email. Please check your email or sign up.');
+      } else if (error.code === 'auth/wrong-password') {
+        throw new Error('Incorrect password. Please try again.');
+      } else if (error.code === 'auth/invalid-email') {
+        throw new Error('Please enter a valid email address.');
+      } else {
+        throw new Error(error.message || 'Authentication failed. Please try again.');
+      }
     }
   }
 
-  static async signOut(): Promise<void> {
+  static async logout(): Promise<void> {
     try {
       await signOut(auth);
     } catch (error: any) {
@@ -107,46 +135,28 @@ export class AuthService {
     }
   }
 
+  static async getUserProfile(userId: string): Promise<User | null> {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', userId));
+      if (userDoc.exists()) {
+        return userDoc.data() as User;
+      }
+      return null;
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      return null;
+    }
+  }
+
   static async getCurrentUser(): Promise<User | null> {
     try {
       const firebaseUser = auth.currentUser;
-      if (!firebaseUser) return null;
-
-      try {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-          return userDoc.data() as User;
-        }
-      } catch (firestoreError: any) {
-        console.warn('Failed to get user data from Firestore:', firestoreError.message);
+      if (!firebaseUser) {
+        return null;
       }
-
-      // If Firestore fails, return basic user info
-      const basicUser: User = {
-        id: firebaseUser.uid,
-        email: firebaseUser.email!,
-        displayName: firebaseUser.displayName || 'User',
-        photoURL: firebaseUser.photoURL || undefined,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        preferences: {
-          stylePreferences: [],
-          favoriteColors: [],
-          sizePreferences: {
-            top: '',
-            bottom: '',
-            shoes: '',
-          },
-          budget: {
-            min: 0,
-            max: 1000,
-          },
-        },
-      };
-
-      return basicUser;
-    } catch (error: any) {
-      console.error('Error getting current user:', error);
+      return await AuthService.getUserProfile(firebaseUser.uid);
+    } catch (error) {
+      console.error("Error getting current user:", error);
       return null;
     }
   }
@@ -154,10 +164,10 @@ export class AuthService {
   static async updateUserProfile(userId: string, updates: Partial<User>): Promise<void> {
     try {
       const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
+      await setDoc(userRef, {
         ...updates,
         updatedAt: new Date(),
-      });
+      }, { merge: true });
     } catch (error: any) {
       console.warn('Failed to update user profile:', error.message);
       throw new Error(error.message);
@@ -167,12 +177,25 @@ export class AuthService {
   static async updateUserPreferences(userId: string, preferences: Partial<UserPreferences>): Promise<void> {
     try {
       const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        'preferences': preferences,
+      await setDoc(userRef, {
+        preferences: preferences,
         updatedAt: new Date(),
-      });
+      }, { merge: true });
     } catch (error: any) {
       console.warn('Failed to update user preferences:', error.message);
+      throw new Error(error.message);
+    }
+  }
+
+  static async updateBrandPreferences(userId: string, brandPreferences: BrandPreferences): Promise<void> {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, {
+        brandPreferences: brandPreferences,
+        updatedAt: new Date(),
+      }, { merge: true });
+    } catch (error: any) {
+      console.warn('Failed to update brand preferences:', error.message);
       throw new Error(error.message);
     }
   }
@@ -180,43 +203,17 @@ export class AuthService {
   static onAuthStateChange(callback: (user: User | null) => void): () => void {
     return onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDoc.exists()) {
-            callback(userDoc.data() as User);
-          } else {
-            // Create basic user if Firestore document doesn't exist
-            const basicUser: User = {
-              id: firebaseUser.uid,
-              email: firebaseUser.email!,
-              displayName: firebaseUser.displayName || 'User',
-              photoURL: firebaseUser.photoURL || undefined,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              preferences: {
-                stylePreferences: [],
-                favoriteColors: [],
-                sizePreferences: {
-                  top: '',
-                  bottom: '',
-                  shoes: '',
-                },
-                budget: {
-                  min: 0,
-                  max: 1000,
-                },
-              },
-            };
-            callback(basicUser);
-          }
-        } catch (error) {
-          console.error('Error getting user data:', error);
-          // Return basic user info if Firestore fails
-          const basicUser: User = {
+        console.log('Firebase user authenticated:', firebaseUser.uid);
+        let userProfile = await this.getUserProfile(firebaseUser.uid);
+        
+        // If user profile doesn't exist, create a basic one
+        if (!userProfile) {
+          console.log('Creating user profile for existing user');
+          const basicUserData: User = {
             id: firebaseUser.uid,
             email: firebaseUser.email!,
             displayName: firebaseUser.displayName || 'User',
-            photoURL: firebaseUser.photoURL || undefined,
+            ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
             createdAt: new Date(),
             updatedAt: new Date(),
             preferences: {
@@ -230,12 +227,70 @@ export class AuthService {
               budget: {
                 min: 0,
                 max: 1000,
+                currency: 'NZD',
+              },
+              preferredRetailers: [],
+              notificationSettings: {
+                outfitReminders: true,
+                styleTips: true,
+                newArrivals: true,
+                priceAlerts: true,
+              },
+              privacySettings: {
+                shareOutfits: false,
+                showProfile: true,
+                allowAnalytics: true,
               },
             },
+            styleProfile: {
+              personality: 'casual',
+              bodyType: 'rectangle',
+              skinTone: 'neutral',
+              height: 170,
+              weight: 70,
+              measurements: {
+                bust: 90,
+                waist: 75,
+                hips: 95,
+                inseam: 80,
+              },
+              styleGoals: [],
+              occasions: ['casual', 'work'],
+              climate: 'temperate',
+            },
+            brandPreferences: {
+              love: [],
+              avoid: [],
+              preferredCategories: [],
+              budget: {
+                min: 0,
+                max: 1000,
+                currency: 'NZD',
+              },
+              preferredPriceRanges: {},
+              brandRatings: {},
+              lastUpdated: new Date(),
+            },
+            subscription: {
+              plan: 'free',
+              startDate: new Date(),
+              features: ['basic-outfits', 'wardrobe-management'],
+            },
           };
-          callback(basicUser);
+          
+          try {
+            await setDoc(doc(db, 'users', firebaseUser.uid), basicUserData);
+            userProfile = basicUserData;
+            console.log('User profile created successfully');
+          } catch (error) {
+            console.error('Failed to create user profile:', error);
+          }
         }
+        
+        console.log('Returning user profile:', userProfile ? userProfile.email : 'null');
+        callback(userProfile);
       } else {
+        console.log('No Firebase user authenticated');
         callback(null);
       }
     });

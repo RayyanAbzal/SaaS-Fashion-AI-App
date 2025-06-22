@@ -1,0 +1,37 @@
+# Firebase Storage Rules for Fashion AI App
+# Copy these rules to your Firebase Console > Storage > Rules
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow authenticated users to read and write their own wardrobe items
+    match /wardrobe/{userId}/{itemId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow authenticated users to read and write their own profile images
+    match /profiles/{userId}/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow authenticated users to read and write their own outfit images
+    match /outfits/{userId}/{outfitId}/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow authenticated users to read and write their own style moments
+    match /style-moments/{userId}/{momentId}/{fileName} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow the test upload to work
+    match /test-connection.txt {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Deny all other access by default for security
+    // match /{allPaths=**} {
+    //   allow read, write: if false;
+    // }
+  }
+} 

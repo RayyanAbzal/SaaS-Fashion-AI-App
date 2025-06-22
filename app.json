@@ -1,36 +1,39 @@
 {
   "expo": {
-    "name": "Fashion Styling App",
-    "slug": "fashion-styling-app",
+    "name": "StyleMate",
+    "slug": "stylemate-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1a1a1a"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourcompany.fashionstylingapp",
+      "bundleIdentifier": "com.stylemate.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "This app needs access to camera to take photos of your outfits.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to photo library to select outfit images.",
-        "NSMicrophoneUsageDescription": "This app needs access to microphone for video recording."
+        "NSCameraUsageDescription": "StyleMate needs camera access to capture your amazing outfits and provide instant style suggestions.",
+        "NSPhotoLibraryUsageDescription": "StyleMate needs photo library access to analyze your wardrobe and create perfect outfit combinations.",
+        "NSMicrophoneUsageDescription": "StyleMate needs microphone access for voice notes and outfit feedback.",
+        "NSLocationWhenInUseUsageDescription": "StyleMate uses location to provide weather-appropriate outfit suggestions."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#FFFFFF"
+        "backgroundColor": "#1a1a1a"
       },
-      "package": "com.yourcompany.fashionstylingapp",
+      "package": "com.stylemate.app",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
-        "RECORD_AUDIO"
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
       ]
     },
     "web": {
@@ -39,7 +42,12 @@
     "plugins": [
       "expo-camera",
       "expo-image-picker",
-      "expo-media-library"
-    ]
+      "expo-media-library",
+      "expo-location"
+    ],
+    "extra": {
+      "openaiApiKey": "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",
+      "openWeatherApiKey": "dea5bf614a1c5eee965149b436f21b39"
+    }
   }
 } 

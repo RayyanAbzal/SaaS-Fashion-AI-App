@@ -1,3 +1,7 @@
+import { NavigatorScreenParams } from '@react-navigation/native';
+import { WeatherData } from '@/services/weatherService';
+import { VisionAnalysis } from "../services/openaiVisionService";
+
 export interface User {
   id: string;
   email: string;
@@ -6,6 +10,9 @@ export interface User {
   createdAt: Date;
   updatedAt: Date;
   preferences: UserPreferences;
+  styleProfile: StyleProfile;
+  brandPreferences: BrandPreferences;
+  subscription: Subscription;
 }
 
 export interface UserPreferences {
@@ -19,57 +26,348 @@ export interface UserPreferences {
   budget: {
     min: number;
     max: number;
+    currency: string;
+  };
+  preferredRetailers: string[];
+  notificationSettings: {
+    outfitReminders: boolean;
+    styleTips: boolean;
+    newArrivals: boolean;
+    priceAlerts: boolean;
+  };
+  privacySettings: {
+    shareOutfits: boolean;
+    showProfile: boolean;
+    allowAnalytics: boolean;
   };
 }
+
+export interface StyleProfile {
+  personality: 'minimalist' | 'bohemian' | 'classic' | 'edgy' | 'romantic' | 'sporty' | 'elegant' | 'casual';
+  bodyType: 'hourglass' | 'rectangle' | 'triangle' | 'inverted-triangle' | 'oval';
+  skinTone: 'warm' | 'cool' | 'neutral' | 'olive';
+  height: number; // in cm
+  weight: number; // in kg
+  measurements: {
+    bust: number;
+    waist: number;
+    hips: number;
+    inseam: number;
+  };
+  styleGoals: string[];
+  occasions: string[];
+  climate: 'tropical' | 'temperate' | 'cold' | 'mixed';
+}
+
+export interface BrandPreferences {
+  love: string[];
+  avoid: string[];
+  preferredCategories: Category[];
+  budget: {
+    min: number;
+    max: number;
+    currency: string;
+  };
+  preferredPriceRanges: {
+    [brand: string]: { min: number; max: number };
+  };
+  brandRatings: {
+    [brand: string]: number; // 1-5 rating
+  };
+  lastUpdated: Date;
+}
+
+export interface Subscription {
+  plan: 'free' | 'premium' | 'pro';
+  startDate: Date;
+  endDate?: Date;
+  features: string[];
+  paymentMethod?: PaymentMethod;
+}
+
+export interface PaymentMethod {
+  id: string;
+  type: 'card' | 'paypal' | 'apple-pay';
+  last4?: string;
+  brand?: string;
+  isDefault: boolean;
+}
+
+export type Category = 'tops' | 'bottoms' | 'shoes' | 'accessories' | 'outerwear';
 
 export interface WardrobeItem {
   id: string;
   userId: string;
   name: string;
-  category: ItemCategory;
-  subcategory: string;
+  category: Category;
+  subcategory?: string;
   color: string;
-  brand?: string;
-  size?: string;
+  brand: string;
+  size: string;
   imageUrl: string;
   tags: string[];
   isFavorite: boolean;
   wearCount: number;
-  lastWorn?: Date;
+  lastWorn?: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  aiAnalysis?: VisionAnalysis;
+  confidenceScore?: number;
+  colorAnalysis?: ColorAnalysis;
+  weatherCompatibility: WeatherCompatibility;
+  purchaseInfo?: PurchaseInfo;
 }
 
-export type ItemCategory = 
-  | 'tops'
-  | 'bottoms'
-  | 'dresses'
-  | 'outerwear'
-  | 'shoes'
-  | 'accessories'
-  | 'jewelry'
-  | 'bags';
+export interface ColorAnalysis {
+  primaryColor: string;
+  secondaryColors: string[];
+  colorFamily: 'warm' | 'cool' | 'neutral';
+  seasonality: string[];
+  skinToneCompatibility: string[];
+}
+
+export interface WeatherCompatibility {
+  temperatureRange: { min: number; max: number };
+  weatherConditions: string[];
+  seasonality: string[];
+}
+
+export interface PurchaseInfo {
+  price: number;
+  currency: string;
+  retailer: string;
+  purchaseDate: Date;
+  warranty?: string;
+}
 
 export interface Outfit {
   id: string;
   userId: string;
   name: string;
-  description?: string;
+  description: string;
   items: WardrobeItem[];
   imageUrl?: string;
+  shoppingItems?: ShoppingItem[];
   tags: string[];
   isFavorite: boolean;
-  season: Season[];
-  occasion: Occasion[];
-  rating?: number;
+  season: string[];
+  occasion: string[];
+  confidenceScore: number;
+  weatherCompatibility: WeatherCompatibility;
+  colorHarmony: ColorHarmony;
+  socialStats: SocialStats;
   wearCount: number;
   lastWorn?: Date;
   createdAt: Date;
   updatedAt: Date;
+  aiGenerated: boolean;
+  quickPick: boolean;
+  outfitType: 'wardrobe-only' | 'mixed' | 'shopping-only';
 }
 
-export type Season = 'spring' | 'summer' | 'fall' | 'winter';
-export type Occasion = 'casual' | 'business' | 'formal' | 'sport' | 'party' | 'date';
+export interface ColorHarmony {
+  type: 'monochromatic' | 'complementary' | 'analogous' | 'triadic' | 'split-complementary';
+  score: number;
+  colors: string[];
+  description: string;
+}
+
+export interface SocialStats {
+  likes: number;
+  loves: number;
+  fires: number;
+  cools: number;
+  shares: number;
+  comments: number;
+  rating: number;
+  totalRatings: number;
+}
+
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  brand: string;
+  price: number;
+  imageUrl: string;
+  purchaseUrl: string;
+  productUrl?: string;
+  category: Category;
+  color: string;
+  description?: string;
+  materials?: string[]; // e.g., ['cotton', 'polyester']
+  tags?: string[];
+  retailer?: Retailer;
+}
+
+export interface ItemAvailability {
+  inStock: boolean;
+  quantity?: number;
+  backorder?: boolean;
+  estimatedDelivery?: Date;
+  storePickup?: boolean;
+}
+
+export interface Retailer {
+  id: string;
+  name: string;
+  logoUrl?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  text: string;
+  createdAt: Date;
+  sender: 'user' | 'bot';
+  context?: MessageContext;
+  quickReplies?: QuickReply[];
+  outfitSuggestions?: OutfitSuggestion[];
+  wardrobeItems?: WardrobeItem[];
+}
+
+export interface MessageContext {
+  intent: string;
+  entities: { [key: string]: any };
+}
+
+export interface QuickReply {
+  title: string;
+  payload: string; // e.g., 'GENERATE_OUTFIT_CASUAL'
+}
+
+export interface ChatbotResponse {
+  text: string;
+  context?: ChatContext;
+  quickReplies?: QuickReply[];
+  followUp?: string;
+}
+
+export interface ChatContext {
+  weather?: any;
+  occasion?: string;
+  wardrobeSubset?: WardrobeItem[];
+  lastInteraction?: UserInteraction;
+}
+
+export interface UserInteraction {
+  timestamp: number;
+  action: string; // 'swipe_like', 'swipe_dislike', 'view_item'
+  itemId?: string;
+}
+
+export interface BotPersonality {
+  name: string;
+  style: 'friendly' | 'professional' | 'witty';
+  voice: string;
+}
+
+export interface ConversationFlow {
+  [intent: string]: {
+    responses: string[];
+    actions?: string[];
+  };
+}
+
+export interface ScheduleEvent {
+  id: string;
+  title: string;
+  date: Date;
+  occasion: Occasion;
+}
+
+export type Occasion = 'work' | 'party' | 'casual' | 'formal' | 'date';
+
+export interface SwipeHistory {
+  id: string;
+  userId: string;
+  outfitId: string;
+  action: 'like' | 'pass' | 'super-like';
+  timestamp: Date;
+  context: SwipeContext;
+  feedback?: SwipeFeedback;
+}
+
+export interface SwipeContext {
+  weather: WeatherData;
+  occasion: string;
+  mood: string;
+  timeOfDay: string;
+  location?: string;
+}
+
+export interface SwipeFeedback {
+  reason: string;
+  rating?: number;
+  comments?: string;
+  wouldWear: boolean;
+  priceAppropriate: boolean;
+  styleMatch: boolean;
+}
+
+export interface WeatherForecast {
+  date: Date;
+  temperature: { min: number; max: number };
+  condition: string;
+  icon: string;
+  humidity: number;
+  windSpeed: number;
+}
+
+export interface StyleInsights {
+  userId: string;
+  period: 'week' | 'month' | 'year';
+  mostWornItems: WardrobeItem[];
+  favoriteColors: string[];
+  preferredBrands: string[];
+  styleEvolution: StyleEvolutionPoint[];
+  recommendations: InsightRecommendation[];
+  createdAt: Date;
+}
+
+export interface StyleEvolutionPoint {
+  date: Date;
+  stylePersonality: string;
+  confidence: number;
+  changes: string[];
+}
+
+export interface InsightRecommendation {
+  type: 'color' | 'style' | 'brand' | 'occasion';
+  title: string;
+  description: string;
+  confidence: number;
+  actionItems: string[];
+}
+
+export interface Notification {
+  id: string;
+  userId: string;
+  type: 'outfit-reminder' | 'style-tip' | 'new-arrival' | 'price-alert' | 'achievement';
+  title: string;
+  message: string;
+  data?: any;
+  isRead: boolean;
+  createdAt: Date;
+  scheduledFor?: Date;
+}
+
+export interface Achievement {
+  id: string;
+  userId: string;
+  type: 'streak' | 'style' | 'social' | 'special';
+  title: string;
+  description: string;
+  icon: string;
+  unlockedAt: Date;
+  progress: number;
+  maxProgress: number;
+  rewards?: AchievementReward[];
+}
+
+export interface AchievementReward {
+  type: 'badge' | 'points' | 'feature' | 'discount';
+  value: string | number;
+  description: string;
+}
 
 export interface CameraPhoto {
   uri: string;
@@ -78,57 +376,86 @@ export interface CameraPhoto {
   base64?: string;
 }
 
-export interface NavigationProps {
-  navigation: any;
-  route: any;
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: any;
 }
 
-export interface AuthState {
-  user: User | null;
+export interface LoadingState {
   isLoading: boolean;
-  error: string | null;
+  error?: ApiError;
+  retry?: () => void;
 }
 
-export interface AppState {
-  auth: AuthState;
-  wardrobe: WardrobeState;
-  outfits: OutfitsState;
+export type MainTabParamList = {
+    Home: undefined;
+    Wardrobe: { capturedImageUri?: string };
+    Chat: undefined;
+    Profile: undefined;
+};
+
+export type RootStackParamList = {
+  Auth: undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList>;
+  Camera: undefined;
+  OutfitSwiper: undefined;
+  BrandSelection: undefined;
+  StyleMate: undefined;
+  StylePreferences: undefined;
+};
+
+export interface BrandCategory {
+  id: string;
+  name: string;
+  description: string;
+  brands: Brand[];
 }
 
-export interface WardrobeState {
-  items: WardrobeItem[];
-  isLoading: boolean;
-  error: string | null;
-  filters: WardrobeFilters;
+export interface Brand {
+  id: string;
+  name: string;
+  logo: string;
+  website: string;
+  description: string;
+  priceRange: 'budget' | 'mid-range' | 'premium' | 'luxury';
+  categories: string[];
+  sustainability: 'low' | 'medium' | 'high';
+  country: string;
+  rating: number;
+  reviewCount: number;
+  isSelected: boolean;
 }
 
-export interface WardrobeFilters {
-  category?: ItemCategory;
-  color?: string;
-  brand?: string;
-  isFavorite?: boolean;
-  searchQuery?: string;
+export interface OutfitSuggestion {
+  id: string;
+  items: ShoppingItem[];
+  reasoning: string;
+  occasion: string;
+  weather: string[];
 }
 
-export interface OutfitsState {
-  outfits: Outfit[];
-  isLoading: boolean;
-  error: string | null;
-  filters: OutfitFilters;
+export interface StyleRecommendation {
+  type: 'outfit' | 'item' | 'style-tip';
+  title: string;
+  description: string;
+  confidence: number;
+  items?: (WardrobeItem | ShoppingItem)[];
+  reasoning: string;
+  weatherContext?: WeatherData;
+  occasionContext?: string;
 }
 
-export interface OutfitFilters {
-  season?: Season;
-  occasion?: Occasion;
-  isFavorite?: boolean;
-  searchQuery?: string;
+export interface QuickPickOption {
+  id: string;
+  outfit: Outfit;
+  confidence: number;
+  reasoning: string;
+  timeToGenerate: number;
 }
 
-export interface FirebaseConfig {
-  apiKey: string;
-  authDomain: string;
-  projectId: string;
-  storageBucket: string;
-  messagingSenderId: string;
-  appId: string;
+export interface SwipeAction {
+  type: 'like' | 'pass';
+  outfitId: string;
+  timestamp: Date;
 } 
