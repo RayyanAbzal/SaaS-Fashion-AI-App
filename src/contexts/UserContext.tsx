@@ -9,6 +9,7 @@ interface UserContextType {
   login: (user: User) => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -74,6 +75,16 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     }
   };
 
+  const signOut = async () => {
+    try {
+      await AuthService.logout();
+      setUser(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+      throw error;
+    }
+  };
+
   const value: UserContextType = {
     user,
     loading,
@@ -81,6 +92,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     login,
     logout,
     refreshUser,
+    signOut,
   };
 
   return (

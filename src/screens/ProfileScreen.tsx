@@ -17,13 +17,16 @@ import { AuthService } from '../services/authService';
 import { User, Achievement, MainTabParamList } from '../types';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useUser } from '../contexts/UserContext';
+import { RootStackParamList } from '../types';
 
 const { width } = Dimensions.get('window');
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { signOut } = useUser();
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -53,29 +56,19 @@ export default function ProfileScreen() {
   };
 
   const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await AuthService.logout();
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            } catch (error: any) {
-              Alert.alert('Error', error.message);
-            }
-          },
-        },
-      ]
-    );
+    try {
+      await signOut();
+    } catch (error) {
+      Alert.alert('Error', 'Failed to sign out');
+    }
   };
 
   const handleBrandSelection = () => {
     navigation.navigate('BrandSelection');
+  };
+
+  const handleAchievements = () => {
+    navigation.navigate('Achievements');
   };
 
   const mockAchievements: Achievement[] = [
@@ -238,9 +231,9 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.actionButton}>
-            <Ionicons name="notifications" size={20} color={Colors.text} />
-            <Text style={styles.actionText}>Notifications</Text>
+          <TouchableOpacity style={styles.actionButton} onPress={handleAchievements}>
+            <Ionicons name="trophy" size={20} color={Colors.text} />
+            <Text style={styles.actionText}>Achievements</Text>
             <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
 

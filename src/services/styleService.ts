@@ -2,7 +2,7 @@ import { WardrobeItem, OutfitSuggestion, ShoppingItem, User, SwipeHistory, Categ
 import { WeatherData } from './weatherService';
 import { FirestoreService } from './firestoreService';
 import ShoppingService from './shoppingService';
-import { getCurrentWeather } from './weatherService';
+import { WeatherService } from './weatherService';
 
 // --- Helper Functions ---
 
@@ -86,8 +86,9 @@ export class StyleService {
             }
 
             // 1. Fetch all data concurrently with error handling
+            const location = await WeatherService.getCurrentLocation();
             const [weather, wardrobe, swipeHistory, shoppingItems, user] = await Promise.allSettled([
-                getCurrentWeather(),
+                WeatherService.getCurrentWeather(location.coords.latitude, location.coords.longitude),
                 FirestoreService.getWardrobeItems(userId),
                 FirestoreService.getSwipeHistory(userId),
                 ShoppingService.getShoppingFeed(),
@@ -115,7 +116,10 @@ export class StyleService {
                 windSpeed: 5,
                 description: 'partly cloudy',
                 icon: '02d',
-                feelsLike: 20
+                feelsLike: 20,
+                precipitation: 0,
+                uv: 5,
+                forecast: []
             };
             const weatherToUse = weatherData || defaultWeather;
 
@@ -187,10 +191,11 @@ export class StyleService {
 
                 return {
                     id: `suggestion-${Date.now()}-${index}`,
-                    items: outfitItems as ShoppingItem[], // Cast for simplicity, real app needs better type guard
+                    items: outfitItems as ShoppingItem[],
                     reasoning: reasoning,
-                    occasion: 'casual', // Placeholder
-                    weather: [weatherToUse.condition]
+                    occasion: 'casual',
+                    weather: [weatherToUse.condition],
+                    confidence: totalScore
                 };
             });
 
@@ -211,7 +216,10 @@ export class StyleService {
                 windSpeed: 5,
                 description: 'partly cloudy',
                 icon: '02d',
-                feelsLike: 20
+                feelsLike: 20,
+                precipitation: 0,
+                uv: 5,
+                forecast: []
             });
         }
     }
@@ -262,14 +270,16 @@ export class StyleService {
                 items: [mockItems[0], mockItems[1]],
                 reasoning: 'A classic combination that never goes out of style. The white t-shirt and blue jeans create a timeless look.',
                 occasion: 'casual',
-                weather: [weather.condition]
+                weather: [weather.condition],
+                confidence: 0.8
             },
             {
                 id: 'mock-suggestion-2',
                 items: [mockItems[0], mockItems[1], mockItems[2]],
                 reasoning: 'Complete your look with these comfortable black sneakers. Perfect for a casual day out.',
                 occasion: 'casual',
-                weather: [weather.condition]
+                weather: [weather.condition],
+                confidence: 0.8
             }
         ];
     }

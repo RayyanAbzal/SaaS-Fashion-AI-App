@@ -333,3 +333,48 @@ const suggestion = await generateOutfitSuggestionWithContext(
 - **AI**: OpenAI GPT-3.5-turbo
 - **Weather**: OpenWeatherMap API
 - **UI**: React Native Linear Gradient, Expo Vector Icons 
+
+## 🔧 **Environment Setup**
+
+1. Create a `.env` file in the root directory with the following variables:
+```bash
+# OpenAI API Key for Vision and Chat features
+EXPO_PUBLIC_OPENAI_API_KEY=your_openai_api_key_here
+
+# Firebase Configuration
+EXPO_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key_here
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
+
+# Weather API Key for outfit suggestions
+EXPO_PUBLIC_WEATHER_API_KEY=your_weather_api_key_here
+```
+
+2. **Getting the API Keys:**
+
+   - **OpenAI API Key**: 
+     1. Go to [OpenAI's platform](https://platform.openai.com/)
+     2. Create an account or sign in
+     3. Navigate to API Keys section
+     4. Create a new secret key
+
+   - **Firebase Configuration**:
+     1. Go to [Firebase Console](https://console.firebase.google.com/)
+     2. Create a new project or select existing one
+     3. Add a web app to your project
+     4. Copy the configuration values from the provided config object
+
+   - **Weather API Key**:
+     1. Go to [OpenWeatherMap](https://openweathermap.org/api)
+     2. Sign up for a free account
+     3. Navigate to API Keys section
+     4. Copy your API key
+
+3. **Security Notes**:
+   - Never commit the `.env` file to version control
+   - Keep your API keys secure and rotate them regularly
+   - Use appropriate API key restrictions in your provider dashboards
+   - Monitor API usage for any suspicious activity 

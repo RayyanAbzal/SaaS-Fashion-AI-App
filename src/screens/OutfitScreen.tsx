@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/colors';
-import { Outfit, Season, Occasion } from '@/types';
+import { Outfit, Occasion } from '@/types';
 
 // Mock data for demonstration
 const mockOutfits: Outfit[] = [
@@ -26,11 +26,17 @@ const mockOutfits: Outfit[] = [
     isFavorite: true,
     season: ['spring', 'summer'],
     occasion: ['casual'],
-    rating: 4.5,
     wearCount: 8,
     lastWorn: new Date('2024-01-18'),
     createdAt: new Date('2023-12-15'),
     updatedAt: new Date('2024-01-18'),
+    confidenceScore: 0.9,
+    weatherCompatibility: { temperatureRange: { min: 10, max: 30 }, weatherConditions: ['clear'], seasonality: ['spring', 'summer'] },
+    colorHarmony: { scheme: 'monochromatic', score: 0.9, dominantColor: 'blue', styleTips: [] },
+    socialStats: { likes: 0, loves: 0, fires: 0, cools: 0, shares: 0, comments: 0, rating: 0, totalRatings: 0 },
+    aiGenerated: false,
+    quickPick: false,
+    outfitType: 'wardrobe-only',
   },
   {
     id: '2',
@@ -42,24 +48,32 @@ const mockOutfits: Outfit[] = [
     tags: ['business', 'professional', 'formal'],
     isFavorite: false,
     season: ['fall', 'winter'],
-    occasion: ['business'],
-    rating: 4.8,
+    occasion: ['work'],
     wearCount: 3,
     lastWorn: new Date('2024-01-10'),
     createdAt: new Date('2023-11-20'),
     updatedAt: new Date('2024-01-10'),
+    confidenceScore: 0.8,
+    weatherCompatibility: { temperatureRange: { min: 0, max: 20 }, weatherConditions: ['cloudy'], seasonality: ['fall', 'winter'] },
+    colorHarmony: { scheme: 'complementary', score: 0.8, dominantColor: 'gray', styleTips: [] },
+    socialStats: { likes: 0, loves: 0, fires: 0, cools: 0, shares: 0, comments: 0, rating: 0, totalRatings: 0 },
+    aiGenerated: false,
+    quickPick: false,
+    outfitType: 'wardrobe-only',
   },
 ];
 
-const seasons: Season[] = ['spring', 'summer', 'fall', 'winter'];
-const occasions: Occasion[] = ['casual', 'business', 'formal', 'sport', 'party', 'date'];
+const seasons: string[] = ['spring', 'summer', 'fall', 'winter'];
+const occasions: Occasion[] = ['work', 'party', 'casual', 'formal', 'date'];
 
 export default function OutfitScreen() {
   const [outfits, setOutfits] = useState<Outfit[]>(mockOutfits);
-  const [selectedSeason, setSelectedSeason] = useState<Season | 'all'>('all');
+  const [selectedSeason, setSelectedSeason] = useState<string | 'all'>('all');
   const [selectedOccasion, setSelectedOccasion] = useState<Occasion | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedOutfits, setSelectedOutfits] = useState<Outfit[]>([]);
 
   const filteredOutfits = outfits.filter(outfit => {
     const matchesSeason = selectedSeason === 'all' || outfit.season.includes(selectedSeason);
@@ -67,7 +81,6 @@ export default function OutfitScreen() {
     const matchesSearch = outfit.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          outfit.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFavorites = !showFavoritesOnly || outfit.isFavorite;
-    
     return matchesSeason && matchesOccasion && matchesSearch && matchesFavorites;
   });
 
@@ -77,6 +90,39 @@ export default function OutfitScreen() {
         outfit.id === outfitId ? { ...outfit, isFavorite: !outfit.isFavorite } : outfit
       )
     );
+  };
+
+  const handleOutfitLongPress = (item: Outfit) => {
+    if (!isSelectionMode) {
+      setIsSelectionMode(true);
+      setSelectedOutfits([item]);
+    }
+  };
+
+  const handleOutfitSelect = (item: Outfit) => {
+    if (isSelectionMode) {
+      const isSelected = selectedOutfits.some(selected => selected.id === item.id);
+      if (isSelected) {
+        setSelectedOutfits(selectedOutfits.filter(selected => selected.id !== item.id));
+      } else {
+        setSelectedOutfits([...selectedOutfits, item]);
+      }
+    }
+  };
+
+  const handleOutfitPress = (item: Outfit) => {
+    if (isSelectionMode) {
+      handleOutfitSelect(item);
+    } else {
+      // TODO: Navigate to outfit details or edit
+    }
+  };
+
+  const handleDeleteSelectedOutfits = () => {
+    if (selectedOutfits.length === 0) return;
+    setOutfits(outfits.filter(o => !selectedOutfits.some(sel => sel.id === o.id)));
+    setSelectedOutfits([]);
+    setIsSelectionMode(false);
   };
 
   const renderFilterButton = (
@@ -94,50 +140,70 @@ export default function OutfitScreen() {
     </TouchableOpacity>
   );
 
-  const renderOutfitCard = ({ item }: { item: Outfit }) => (
-    <TouchableOpacity style={styles.outfitCard}>
-      <Image source={{ uri: item.imageUrl }} style={styles.outfitImage} />
-      <View style={styles.outfitInfo}>
-        <View style={styles.outfitHeader}>
-          <Text style={styles.outfitName}>{item.name}</Text>
-          <TouchableOpacity
-            style={styles.favoriteButton}
-            onPress={() => toggleFavorite(item.id)}
-          >
-            <Ionicons
-              name={item.isFavorite ? 'heart' : 'heart-outline'}
-              size={20}
-              color={item.isFavorite ? Colors.error : Colors.textSecondary}
-            />
-          </TouchableOpacity>
-        </View>
-        
-        {item.description && (
-          <Text style={styles.outfitDescription}>{item.description}</Text>
-        )}
-        
-        <View style={styles.outfitDetails}>
-          <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={16} color={Colors.warning} />
-            <Text style={styles.ratingText}>{item.rating?.toFixed(1)}</Text>
+  const renderOutfitCard = ({ item }: { item: Outfit }) => {
+    const isSelected = selectedOutfits.some(selected => selected.id === item.id);
+    return (
+      <TouchableOpacity
+        style={[styles.outfitCard, isSelectionMode && isSelected && styles.selectedOutfitCard]}
+        onPress={() => handleOutfitPress(item)}
+        onLongPress={() => handleOutfitLongPress(item)}
+        activeOpacity={0.8}
+      >
+        <Image source={{ uri: item.imageUrl }} style={styles.outfitImage} />
+        {isSelectionMode && (
+          <View style={[styles.outfitSelectionIndicator, isSelected && styles.outfitSelectionIndicatorSelected]}>
+            <Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={isSelected ? Colors.primary : Colors.textSecondary} />
           </View>
-          <Text style={styles.wearCount}>Worn {item.wearCount} times</Text>
+        )}
+        <View style={styles.outfitInfo}>
+          <View style={styles.outfitHeader}>
+            <Text style={styles.outfitName}>{item.name}</Text>
+            <TouchableOpacity
+              style={styles.favoriteButton}
+              onPress={() => toggleFavorite(item.id)}
+            >
+              <Ionicons
+                name={item.isFavorite ? 'heart' : 'heart-outline'}
+                size={20}
+                color={item.isFavorite ? Colors.error : Colors.textSecondary}
+              />
+            </TouchableOpacity>
+          </View>
+          {item.description && (
+            <Text style={styles.outfitDescription}>{item.description}</Text>
+          )}
+          <View style={styles.outfitDetails}>
+            {/* Optionally, you can show confidenceScore or other info here */}
+          </View>
+          <View style={styles.tagsContainer}>
+            {item.season.map(season => (
+              <View key={season} style={styles.tag}>
+                <Text style={styles.tagText}>{season}</Text>
+              </View>
+            ))}
+            {item.occasion.map(occasion => (
+              <View key={occasion} style={[styles.tag, styles.occasionTag]}>
+                <Text style={styles.tagText}>{occasion}</Text>
+              </View>
+            ))}
+          </View>
         </View>
-        
-        <View style={styles.tagsContainer}>
-          {item.season.map(season => (
-            <View key={season} style={styles.tag}>
-              <Text style={styles.tagText}>{season}</Text>
-            </View>
-          ))}
-          {item.occasion.map(occasion => (
-            <View key={occasion} style={[styles.tag, styles.occasionTag]}>
-              <Text style={styles.tagText}>{occasion}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderSelectionModeBar = () => (
+    <View style={styles.selectionModeBar}>
+      <Text style={styles.selectionModeText}>{selectedOutfits.length} selected</Text>
+      <TouchableOpacity style={styles.deleteSelectedButton} onPress={handleDeleteSelectedOutfits}>
+        <Ionicons name="trash" size={20} color={Colors.textInverse} />
+        <Text style={styles.deleteSelectedText}>Delete Selected</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.cancelSelectionButton} onPress={() => { setIsSelectionMode(false); setSelectedOutfits([]); }}>
+        <Ionicons name="close-circle" size={20} color={Colors.textInverse} />
+        <Text style={styles.cancelSelectionText}>Cancel</Text>
+      </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -148,7 +214,7 @@ export default function OutfitScreen() {
           <Ionicons name="add" size={24} color={Colors.textInverse} />
         </TouchableOpacity>
       </View>
-
+      {isSelectionMode && renderSelectionModeBar()}
       <View style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
           <Ionicons name="search" size={20} color={Colors.textSecondary} />
@@ -170,7 +236,6 @@ export default function OutfitScreen() {
           />
         </TouchableOpacity>
       </View>
-
       <View style={styles.filtersContainer}>
         <Text style={styles.filterLabel}>Season:</Text>
         <FlatList
@@ -178,7 +243,7 @@ export default function OutfitScreen() {
           renderItem={({ item }) => renderFilterButton(
             item === 'all' ? 'All' : item.charAt(0).toUpperCase() + item.slice(1),
             selectedSeason === item,
-            () => setSelectedSeason(item as Season | 'all')
+            () => setSelectedSeason(item as string | 'all')
           )}
           keyExtractor={(item) => item}
           horizontal
@@ -186,7 +251,6 @@ export default function OutfitScreen() {
           contentContainerStyle={styles.filtersList}
         />
       </View>
-
       <View style={styles.filtersContainer}>
         <Text style={styles.filterLabel}>Occasion:</Text>
         <FlatList
@@ -202,7 +266,6 @@ export default function OutfitScreen() {
           contentContainerStyle={styles.filtersList}
         />
       </View>
-
       <FlatList
         data={filteredOutfits}
         renderItem={renderOutfitCard}
@@ -370,5 +433,69 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textInverse,
     fontWeight: '500',
+  },
+  selectedOutfitCard: {
+    borderColor: Colors.primary,
+    borderWidth: 2,
+    backgroundColor: Colors.primary + '10',
+  },
+  outfitSelectionIndicator: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    width: 28,
+    height: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  outfitSelectionIndicatorSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primary + '20',
+  },
+  selectionModeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.backgroundCard,
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  selectionModeText: {
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  deleteSelectedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.error,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginLeft: 10,
+  },
+  deleteSelectedText: {
+    color: Colors.textInverse,
+    fontWeight: 'bold',
+    marginLeft: 6,
+  },
+  cancelSelectionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.textSecondary,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginLeft: 10,
+  },
+  cancelSelectionText: {
+    color: Colors.textInverse,
+    fontWeight: 'bold',
+    marginLeft: 6,
   },
 }); 

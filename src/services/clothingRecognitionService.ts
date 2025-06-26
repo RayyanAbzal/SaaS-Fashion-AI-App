@@ -1,5 +1,7 @@
-import { CameraPhoto } from '@/types';
-import { analyzeImageWithGoogle, VisionResponse } from './googleVisionService';
+import { CameraPhoto } from '../types';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from './firebase';
+import OpenAIVisionService from './openaiVisionService';
 
 export interface ClothingItem {
   id: string;
@@ -39,7 +41,9 @@ export interface RecognitionResult {
  */
 export const analyzeClothingPhoto = async (photo: CameraPhoto): Promise<RecognitionResult> => {
   try {
-    const { analysis, processingTime }: VisionResponse = await analyzeImageWithGoogle(photo.uri);
+    const startTime = Date.now();
+    const visionService = OpenAIVisionService.getInstance();
+    const { analysis } = await visionService.analyzeClothingImage(photo.uri);
 
     if (!analysis.isValidClothing) {
       throw new Error('The uploaded image does not appear to be a piece of clothing. Please try another photo.');
@@ -49,19 +53,19 @@ export const analyzeClothingPhoto = async (photo: CameraPhoto): Promise<Recognit
       id: new Date().toISOString(),
       name: analysis.description,
       category: analysis.category,
-      subcategory: analysis.style,
+      subcategory: analysis.subcategory || 'general',
       color: analysis.color,
       brand: analysis.brand,
       confidence: analysis.confidence,
-      colorHex: '#000000',
-      colorConfidence: analysis.confidence,
-      boundingBox: { x: 0, y: 0, width: 1, height: 1 },
+      colorHex: '#000000', // OpenAI Vision doesn't provide hex colors
+      colorConfidence: 0.8, // OpenAI Vision doesn't provide color confidence
+      boundingBox: { x: 0, y: 0, width: 1, height: 1 }, // OpenAI Vision doesn't provide bounding boxes
       attributes: {
-        pattern: analysis.tags.includes('pattern') ? 'patterned' : 'solid',
-        sleeveLength: 'unknown',
-        neckline: 'unknown',
-        fit: 'unknown',
-        material: 'unknown'
+        pattern: analysis.tags.find(tag => ['pattern', 'solid', 'striped', 'floral'].includes(tag)) || 'solid',
+        sleeveLength: analysis.tags.find(tag => ['short-sleeve', 'long-sleeve', 'sleeveless'].includes(tag)) || 'unknown',
+        neckline: analysis.tags.find(tag => ['v-neck', 'crew-neck', 'turtleneck'].includes(tag)) || 'unknown',
+        fit: analysis.tags.find(tag => ['slim', 'regular', 'loose', 'oversized'].includes(tag)) || 'unknown',
+        material: analysis.tags.find(tag => ['cotton', 'polyester', 'wool', 'leather', 'denim'].includes(tag)) || 'unknown'
       },
       style: analysis.style,
     };
@@ -69,8 +73,8 @@ export const analyzeClothingPhoto = async (photo: CameraPhoto): Promise<Recognit
     return {
       items: [clothingItem],
       totalItems: 1,
-      processingTime,
-      imageQuality: 'high',
+      processingTime: Date.now() - startTime,
+      imageQuality: 'high', // OpenAI Vision doesn't provide image quality assessment
     };
   } catch (error) {
     console.error('Error analyzing clothing photo:', error);
@@ -85,8 +89,28 @@ export const analyzeClothingPhoto = async (photo: CameraPhoto): Promise<Recognit
  * Get detailed information about a specific clothing item
  */
 export const getItemDetails = async (itemId: string): Promise<ClothingItem | null> => {
-  console.warn(`getItemDetails is returning a mock value for itemId: ${itemId}`);
-  return null;
+  try {
+    if (!itemId) {
+      console.warn('getItemDetails called with undefined itemId');
+      return null;
+    }
+
+    const docRef = doc(db, 'clothing_items', itemId);
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      console.warn(`No clothing item found with id: ${itemId}`);
+      return null;
+    }
+
+    return {
+      id: docSnap.id,
+      ...docSnap.data()
+    } as ClothingItem;
+  } catch (error) {
+    console.error('Error fetching item details:', error);
+    throw error;
+  }
 };
 
 /**

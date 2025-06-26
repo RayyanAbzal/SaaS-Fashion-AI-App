@@ -17,6 +17,8 @@ import OpenAIVisionService, { VisionAnalysis as AIAnalysis } from '../services/o
 import { fileToBase64 } from '../utils/fileUtils';
 import { AuthService } from '../services/authService';
 import { Ionicons } from '@expo/vector-icons';
+import { sha256 } from 'js-sha256';
+import * as FileSystem from 'expo-file-system';
 
 const { width } = Dimensions.get('window');
 
@@ -25,6 +27,7 @@ interface WardrobeItemFormProps {
   onSave: (item: WardrobeItem) => void;
   onCancel: () => void;
   existingItem?: WardrobeItem;
+  saving?: boolean;
 }
 
 export default function WardrobeItemForm({
@@ -32,6 +35,7 @@ export default function WardrobeItemForm({
   onSave,
   onCancel,
   existingItem,
+  saving = false,
 }: WardrobeItemFormProps) {
   const [name, setName] = useState(existingItem?.name || '');
   const [category, setCategory] = useState<Category>(existingItem?.category || 'tops');
@@ -109,6 +113,12 @@ export default function WardrobeItemForm({
     setTags(tags.filter(tag => tag !== tagToRemove));
   };
 
+  // Helper to hash the image file
+  const getImageHash = async (uri: string) => {
+    const fileData = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    return sha256(fileData);
+  };
+
   const handleSave = async () => {
     const currentUser = await AuthService.getCurrentUser();
     if (!currentUser) {
@@ -126,6 +136,15 @@ export default function WardrobeItemForm({
         return;
     }
 
+    // Generate image hash
+    let imageHash = '';
+    try {
+      imageHash = await getImageHash(imageUri);
+    } catch (err) {
+      Alert.alert('Error', 'Failed to hash image.');
+      return;
+    }
+
     const itemToSave: WardrobeItem = {
       id: existingItem?.id || new Date().toISOString(), // Temporary ID
       userId: currentUser.id,
@@ -136,6 +155,7 @@ export default function WardrobeItemForm({
       brand,
       size,
       imageUrl: imageUri,
+      imageHash,
       tags: tags,
       isFavorite,
       wearCount,
@@ -302,13 +322,18 @@ export default function WardrobeItemForm({
         <TouchableOpacity 
           style={[
             styles.saveButton,
-            (!name || !category || !color || isAnalyzing) && styles.saveButtonDisabled
+            (!name || !category || !color || isAnalyzing || saving) && styles.saveButtonDisabled
           ]} 
           onPress={handleSave}
-          disabled={!name || !category || !color || isAnalyzing}
+          disabled={!name || !category || !color || isAnalyzing || saving}
           activeOpacity={0.8}
         >
-          {isAnalyzing ? (
+          {saving ? (
+            <>
+              <ActivityIndicator size="small" color={Colors.text} />
+              <Text style={styles.saveButtonText}>Saving...</Text>
+            </>
+          ) : isAnalyzing ? (
             <>
               <ActivityIndicator size="small" color={Colors.text} />
               <Text style={styles.saveButtonText}>Analyzing...</Text>

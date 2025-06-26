@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors } from '../constants/colors';
-import { OutfitSuggestion, ShoppingItem, RootStackParamList, MainTabParamList } from '../types';
+import { OutfitSuggestion, ShoppingItem, WardrobeItem, RootStackParamList, MainTabParamList } from '../types';
 import { StyleService } from '../services/styleService';
 import { useUser } from '../contexts/UserContext';
 
@@ -66,13 +66,15 @@ export default function StyleMateScreen() {
       </View>
       
       <View style={styles.itemsContainer}>
-        {suggestion.items.map((item: ShoppingItem, index: number) => (
+        {suggestion.items.map((item: WardrobeItem | ShoppingItem, index: number) => (
           <View key={index} style={styles.itemCard}>
             <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
             <View style={styles.itemInfo}>
               <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
               <Text style={styles.itemBrand}>{item.brand}</Text>
-              <Text style={styles.itemPrice}>${item.price}</Text>
+              {'price' in item && (
+                <Text style={styles.itemPrice}>${item.price}</Text>
+              )}
             </View>
           </View>
         ))}
@@ -83,33 +85,35 @@ export default function StyleMateScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <View style={styles.header}>
-            <Text style={styles.headerTitle}>Your AI Stylist</Text>
-            <Text style={styles.headerSubtitle}>
-                Get personalized outfit suggestions based on your wardrobe, style profile, and local weather.
-            </Text>
-        </View>
-
-        <TouchableOpacity style={styles.generateButton} onPress={generateOutfitSuggestions} disabled={loading}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.generateButtonText}>Get Outfit Ideas</Text>
-          )}
-        </TouchableOpacity>
-
-        {suggestions.length === 0 && !loading && (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="sparkles-outline" size={64} color={Colors.textSecondary} />
-            <Text style={styles.emptyText}>Ready for inspiration?</Text>
-            <Text style={styles.emptySubtext}>Tap the button to get your first outfit suggestion.</Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <View style={styles.contentContainer}>
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+          <View style={styles.header}>
+              <Text style={styles.headerTitle}>Your AI Stylist</Text>
+              <Text style={styles.headerSubtitle}>
+                  Get personalized outfit suggestions based on your wardrobe, style profile, and local weather.
+              </Text>
           </View>
-        )}
 
-        {suggestions.map(renderSuggestion)}
-      </ScrollView>
+          <TouchableOpacity style={styles.generateButton} onPress={generateOutfitSuggestions} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.generateButtonText}>Get Outfit Ideas</Text>
+            )}
+          </TouchableOpacity>
+
+          {suggestions.length === 0 && !loading && (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="sparkles-outline" size={64} color={Colors.textSecondary} />
+              <Text style={styles.emptyText}>Ready for inspiration?</Text>
+              <Text style={styles.emptySubtext}>Tap the button to get your first outfit suggestion.</Text>
+            </View>
+          )}
+
+          {suggestions.map(renderSuggestion)}
+        </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -118,6 +122,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: Colors.background,
+    },
+    contentContainer: {
+        flex: 1,
     },
     scrollContainer: {
         padding: 20,

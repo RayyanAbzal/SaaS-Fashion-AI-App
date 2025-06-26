@@ -1,13 +1,15 @@
 {
   "expo": {
     "name": "StyleMate",
-    "slug": "stylemate-app",
+    "slug": "stylemate",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1a1a1a"
+      "backgroundColor": "#0A0A0A"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -24,7 +26,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#1a1a1a"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0A"
       },
       "package": "com.stylemate.app",
       "permissions": [
@@ -40,14 +43,31 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-camera",
-      "expo-image-picker",
-      "expo-media-library",
-      "expo-location"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow StyleMate to access your camera to take photos of your clothes."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow StyleMate to use your location for weather-based outfit suggestions."
+        }
+      ]
     ],
     "extra": {
-      "openaiApiKey": "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",
-      "openWeatherApiKey": "dea5bf614a1c5eee965149b436f21b39"
+      "OPENAI_API_KEY": "EXPO_PUBLIC_OPENAI_API_KEY",
+      "FIREBASE_API_KEY": "EXPO_PUBLIC_FIREBASE_API_KEY",
+      "FIREBASE_AUTH_DOMAIN": "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN",
+      "FIREBASE_PROJECT_ID": "EXPO_PUBLIC_FIREBASE_PROJECT_ID",
+      "FIREBASE_STORAGE_BUCKET": "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET",
+      "FIREBASE_MESSAGING_SENDER_ID": "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+      "FIREBASE_APP_ID": "EXPO_PUBLIC_FIREBASE_APP_ID",
+      "WEATHER_API_KEY": "EXPO_PUBLIC_WEATHER_API_KEY",
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
     }
   }
 } 

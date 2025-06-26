@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "quiet-terra-463700-v2",
+  "private_key_id": "9dae0db8cd412efeffe786e46ac55692e25a54b7",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC6j+1EUkZXmP2o\nqrm9Nv5OBpnnorLenPrHzF0J+opjDvNvwk4uThVW1LYypsFu67ASbkaauvCz9ZuN\nmrbXjjM4EFV42X8HA7z2lmXsAp+3r27vcEyhOQ9cJ4aJWKA3os2W5KCmjnTbDEHO\nsZU/5TZt1Fh/ZAEZ3TTU+Jv6whMRu+Ke1neHp5i3imxXeElvsZ7l2KYVDffjwSVe\nGowUK8aKXAwSBDZk/PAhU0/O22s40j9aXccxX++BELJVzVY4z9yr7uVOXFWXlS7/\ngVqSO/sq7Ctv0+IXQi5TJ0hpleR1s0wYvYzKA1BRFwzP3LKg5gpYDQ5alpIkktye\nVfrh+p5zAgMBAAECggEASQl5sQqowTiC7dpQtvPloTRSYm2+qwo336pxLivoq5k5\n0qH2K4ikMAc8gR3pknwwxTZo68CN5VYdHNXaCQ+Bm8xBOfukEGH1Q3Bj3H62epny\ny0hip6eIDOLod7K7nqxc4lsFTc9tjigBR2McdBRPN7YvI0hKag7A1TOzFPuPrZv9\ncNxIDQKqVobeKX78xDFOk7NGQbJdXv7NA9xX9qgDHejB2ueEAXu4Ft8fDMyEF850\nsp2s6IiVumloZG4IuRH/CxU5xaZPqTZyIVaPLICQHeKVpX/NlYF/49rrbRNp63Py\nf3H9jhWorrknd8bDBvU8PTSKNlPNLOy9LilBANUn2QKBgQD16FD8DO+TxXJWMFF4\nmyDlLVjAqBK9rXjS6N6JGLe2nnuZ+PigEFxUdqWflxSnQ8d1LZxzduAMJ9lN6nAZ\nnWiuYVK7ndrSnyFHEEqyuazvCiRP5qirwWocOuNuR44kJdsbL8pXpIUFdqO1MV7H\n97653KWAaTmUJ9jzb21Ha/E8pQKBgQDCOBXxC3B+vhkJm3OAm26LO/A8isJDd8PW\nRJG2bDZpZydM38Tis1bYuZAvUNClAL2YuWX3GkgHo0KZabvLcB9KLbYvtRMslm4Q\nyR8VQHCrOCbSIDzpeS87jxUX58qjKHvEcAOw3sdVBFGnxXZ5pSt5IIyMRJPsv5K/\nPNVpjgWLNwKBgGiJPgQoK6CSCy0AlWHD8JP8VwJvcKgZmoduX0vAqjiD3t9xq5+/\n1MBDP908CJeihKQXo66iFlSUjBhHVShOdjXLQbRoQqHO7AKdtmOL8ywbD5y33XRG\nYKlnj09OM+rB/QbtpgLj+Xh9GtLoDfbMJtQ0LFcOZF/LILs73yTBimfRAoGAAa1m\nUxycLhwKL1EOYE/3VnCAFKXGI7sHD/SrpX2twp9HcZyFIMgXuetwWVhDVQl6mbUQ\nMmAhux8n1hdZrdocCxH1/td7gOkTrkVuZUqXLoNfonTw0btgMw17SyePUnVpDDtD\nbOWfpxZQdjh4W3iXtYYYcKWu+V52L/yggzbcyWUCgYEApa0GEePsNsYVRUjo53IL\ni2IZ5Y1FryJUcDyX9rDc/swToAv89IZJrD7elWZPmFfKSLxDzXJooG8RrrC8Myad\nm/G4LiLDb8HaGSYWuI1m+Msp4faCXDTZURgQcYYn2mTLvujk5Pv0sbzycUjsA1iZ\nfhy8FNRErwOatSaofqTepC8=\n-----END PRIVATE KEY-----\n",
+  "client_email": "vision-product-search@quiet-terra-463700-v2.iam.gserviceaccount.com",
+  "client_id": "103310402729206977028",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/vision-product-search%40quiet-terra-463700-v2.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

@@ -6,22 +6,36 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Image,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { User } from '../types';
 import { AuthService } from '../services/authService';
-import { getCurrentWeather } from '../services/weatherService';
+import { WeatherService, WeatherData, OutfitRecommendation } from '../services/weatherService';
+import { useNavigation, CompositeNavigationProp } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import * as Location from 'expo-location';
+import { useUser } from '../contexts/UserContext';
+import { MainTabParamList, RootStackParamList } from '../types';
 
-interface HomeScreenProps {
-  navigation: any;
-}
+type HomeScreenNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<MainTabParamList, 'Home'>,
+  NativeStackNavigationProp<RootStackParamList>
+>;
 
-export default function HomeScreen({ navigation }: HomeScreenProps) {
+export default function HomeScreen() {
   const [user, setUser] = useState<User | null>(null);
-  const [weather, setWeather] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [recommendations, setRecommendations] = useState<OutfitRecommendation | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const navigation = useNavigation<HomeScreenNavigationProp>();
+  const { user: userContext } = useUser();
 
   useEffect(() => {
     loadUserData();
@@ -39,13 +53,48 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const loadWeatherData = async () => {
     try {
-      const weatherData = await getCurrentWeather();
+      // Request location permissions
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Location Access Required',
+          'Please enable location services to get weather-based outfit recommendations.',
+          [{ text: 'OK' }]
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Get current location
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      // Get weather data
+      const weatherData = await WeatherService.getCurrentWeather(
+        location.coords.latitude,
+        location.coords.longitude
+      );
       setWeather(weatherData);
+
+      // Get outfit recommendations
+      const outfitRecs = WeatherService.getOutfitRecommendations(weatherData);
+      setRecommendations(outfitRecs);
     } catch (error) {
       console.error('Error loading weather data:', error);
+      Alert.alert(
+        'Error',
+        'Failed to load weather data. Please check your internet connection and try again.'
+      );
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadWeatherData();
+    setRefreshing(false);
   };
 
   const handleWhatShouldIWear = () => {
@@ -68,7 +117,7 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     }
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
@@ -81,11 +130,25 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {/* Pinterest Board Button */}
+        <TouchableOpacity
+          style={styles.pinterestButton}
+          onPress={() => (navigation as any).navigate('PinterestBoard')}
+        >
+          <Ionicons name="logo-pinterest" size={24} color={Colors.primary} style={{ marginRight: 8 }} />
+          <Text style={styles.pinterestButtonText}>Analyze Pinterest Board</Text>
+        </TouchableOpacity>
+
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.greeting}>
-            Good {getTimeOfDay()}, {user?.displayName || 'Fashionista'}! 👋
+            Good {getTimeOfDay()}, {user?.displayName || 'Fashionista'}!
           </Text>
           <Text style={styles.subtitle}>
             Ready to slay today's outfit?
@@ -96,16 +159,95 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
         {weather && (
           <View style={styles.weatherCard}>
             <View style={styles.weatherHeader}>
-              <Ionicons name="partly-sunny" size={24} color={Colors.primary} />
-              <Text style={styles.weatherTitle}>Today's Weather</Text>
+              <Image
+                source={{ uri: weather.icon }}
+                style={styles.weatherIcon}
+              />
+              <View>
+                <Text style={styles.temperature}>{weather.temperature}°C</Text>
+                <Text style={styles.weatherDescription}>
+                  {weather.description}
+                </Text>
+              </View>
             </View>
-            <View style={styles.weatherInfo}>
-              <Text style={styles.temperature}>{Math.round(weather.temperature)}°C</Text>
-              <Text style={styles.weatherDescription}>{weather.description}</Text>
+            <View style={styles.weatherDetails}>
+              <View style={styles.weatherDetail}>
+                <Ionicons name="thermometer" size={20} color={Colors.text} />
+                <Text style={styles.detailText}>
+                  Feels like {weather.feelsLike}°C
+                </Text>
+              </View>
+              <View style={styles.weatherDetail}>
+                <Ionicons name="water" size={20} color={Colors.text} />
+                <Text style={styles.detailText}>
+                  Humidity {weather.humidity}%
+                </Text>
+              </View>
+              <View style={styles.weatherDetail}>
+                <Ionicons name="umbrella" size={20} color={Colors.text} />
+                <Text style={styles.detailText}>
+                  Rain {weather.precipitation}mm
+                </Text>
+              </View>
             </View>
-            <Text style={styles.weatherTip}>
-              Perfect for {getWeatherOutfitSuggestion(weather.temperature)} outfits!
-            </Text>
+          </View>
+        )}
+
+        {/* Recommendations Section */}
+        {recommendations && (
+          <View style={styles.recommendationsCard}>
+            <Text style={styles.sectionTitle}>Today's Outfit Recommendations</Text>
+            
+            {Object.entries(recommendations.recommendations).map(([category, items]) => (
+              items.length > 0 && (
+                <View key={category} style={styles.categorySection}>
+                  <Text style={styles.categoryTitle}>
+                    {category.charAt(0).toUpperCase() + category.slice(1)}
+                  </Text>
+                  <View style={styles.recommendationsList}>
+                    {items.map((item, index) => (
+                      <View key={index} style={styles.recommendationItem}>
+                        <Ionicons
+                          name={
+                            category === 'tops' ? 'shirt-outline' :
+                            category === 'bottoms' ? 'apps-outline' :
+                            category === 'outerwear' ? 'cloud-outline' :
+                            'glasses-outline'
+                          }
+                          size={20}
+                          color={Colors.text}
+                        />
+                        <Text style={styles.recommendationText}>{item}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )
+            ))}
+          </View>
+        )}
+
+        {/* Forecast Section */}
+        {weather?.forecast && (
+          <View style={styles.forecastCard}>
+            <Text style={styles.sectionTitle}>5-Day Forecast</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {weather.forecast.map((day, index) => (
+                <View key={index} style={styles.forecastDay}>
+                  <Text style={styles.forecastDate}>
+                    {new Date(day.date).toLocaleDateString(undefined, { weekday: 'short' })}
+                  </Text>
+                  <Image
+                    source={{ uri: day.icon }}
+                    style={styles.forecastIcon}
+                  />
+                  <Text style={styles.forecastTemp}>
+                    {day.temperature.max}° / {day.temperature.min}°
+                  </Text>
+                  <Text style={styles.forecastCondition}>{day.condition}</Text>
+                </View>
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -202,13 +344,6 @@ const getTimeOfDay = (): string => {
   return 'evening';
 };
 
-const getWeatherOutfitSuggestion = (temperature: number): string => {
-  if (temperature < 10) return 'warm, layered';
-  if (temperature < 20) return 'light layers';
-  if (temperature < 25) return 'casual, comfortable';
-  return 'light, breathable';
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -224,8 +359,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.textSecondary,
   },
-  scrollView: {
-    flex: 1,
+  scrollContent: {
+    padding: 16,
   },
   header: {
     paddingHorizontal: 20,
@@ -243,39 +378,113 @@ const styles = StyleSheet.create({
   },
   weatherCard: {
     backgroundColor: Colors.backgroundCard,
-    marginHorizontal: 20,
-    marginBottom: 20,
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
   },
   weatherHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
   },
-  weatherTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginLeft: 8,
-  },
-  weatherInfo: {
-    marginBottom: 8,
+  weatherIcon: {
+    width: 64,
+    height: 64,
+    marginRight: 16,
   },
   temperature: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: '600',
     color: Colors.text,
   },
   weatherDescription: {
     fontSize: 16,
     color: Colors.textSecondary,
-    marginTop: 4,
+    textTransform: 'capitalize',
   },
-  weatherTip: {
+  weatherDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  weatherDetail: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  detailText: {
+    marginLeft: 8,
+    color: Colors.text,
+  },
+  recommendationsCard: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 16,
+  },
+  categorySection: {
+    marginBottom: 16,
+  },
+  categoryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  recommendationsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  recommendationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  recommendationText: {
+    marginLeft: 8,
+    color: Colors.text,
+  },
+  forecastCard: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 12,
+    padding: 16,
+  },
+  forecastDay: {
+    alignItems: 'center',
+    marginRight: 24,
+    minWidth: 80,
+  },
+  forecastDate: {
     fontSize: 14,
-    color: Colors.accent,
-    fontStyle: 'italic',
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  forecastIcon: {
+    width: 40,
+    height: 40,
+    marginBottom: 8,
+  },
+  forecastTemp: {
+    fontSize: 14,
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  forecastCondition: {
+    fontSize: 12,
+    color: Colors.textSecondary,
   },
   mainActionButton: {
     backgroundColor: Colors.primary,
@@ -303,13 +512,6 @@ const styles = StyleSheet.create({
   },
   quickActionsContainer: {
     marginBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginHorizontal: 20,
-    marginBottom: 16,
   },
   quickActionsGrid: {
     flexDirection: 'row',
@@ -349,5 +551,22 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
     fontStyle: 'italic',
+  },
+  pinterestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 18,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    justifyContent: 'center',
+  },
+  pinterestButtonText: {
+    color: Colors.primary,
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 }); 

@@ -96,12 +96,60 @@ export class FirestoreService {
   }
 
   static async addWardrobeItem(item: WardrobeItem): Promise<void> {
+    // Check for duplicates based on image similarity and metadata
+    const existingItems = await this.checkForDuplicates(item);
+    if (existingItems.length > 0) {
+      throw new Error('A similar item already exists in your wardrobe.');
+    }
+    
     await setDoc(doc(db, 'users', item.userId, 'wardrobe', item.id), item);
   }
 
   static async updateWardrobeItem(item: WardrobeItem): Promise<void> {
     const itemRef = doc(db, 'users', item.userId, 'wardrobe', item.id);
     await updateDoc(itemRef, { ...item, updatedAt: new Date() });
+  }
+
+  private static async checkForDuplicates(newItem: WardrobeItem): Promise<WardrobeItem[]> {
+    try {
+      // Get all items in the user's wardrobe
+      const wardrobeRef = collection(db, 'users', newItem.userId, 'wardrobe');
+      const snapshot = await getDocs(wardrobeRef);
+      const existingItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WardrobeItem));
+
+      // Check for duplicates based on multiple criteria
+      return existingItems.filter(item => {
+        // Skip comparing with itself (for updates)
+        if (item.id === newItem.id) return false;
+
+        // Check for exact image URL match (same image uploaded multiple times)
+        if (item.imageUrl === newItem.imageUrl) return true;
+
+        // Check for similar items based on metadata
+        const isSimilar = (
+          item.name.toLowerCase() === newItem.name.toLowerCase() &&
+          item.category === newItem.category &&
+          item.brand.toLowerCase() === newItem.brand.toLowerCase() &&
+          item.color.toLowerCase() === newItem.color.toLowerCase()
+        );
+
+        // If we have AI analysis, use it for more accurate comparison
+        if (item.aiAnalysis && newItem.aiAnalysis) {
+          const confidenceThreshold = 0.9; // 90% confidence threshold
+          const isSimilarByAI = (
+            item.aiAnalysis.category === newItem.aiAnalysis.category &&
+            item.aiAnalysis.confidence > confidenceThreshold &&
+            newItem.aiAnalysis.confidence > confidenceThreshold
+          );
+          return isSimilar && isSimilarByAI;
+        }
+
+        return isSimilar;
+      });
+    } catch (error) {
+      console.error('Error checking for duplicates:', error);
+      return []; // Return empty array on error to allow save
+    }
   }
 
   static async deleteWardrobeItem(userId: string, itemId: string): Promise<void> {
@@ -182,20 +230,36 @@ export class FirestoreService {
         return [];
       }
       
-      // Remove orderBy to avoid index requirement - we'll sort in memory instead
+      // Use proper index for efficient querying
       const q = query(
         collection(db, 'swipe_history'),
-        where('userId', '==', userId)
+        where('userId', '==', userId),
+        orderBy('timestamp', 'desc'),
+        limit(100) // Limit to last 100 swipes for better performance
       );
+
       const querySnapshot = await getDocs(q);
-      const results = querySnapshot.docs.map(doc => ({
+      return querySnapshot.docs.map(doc => ({
         ...doc.data(),
         id: doc.id,
       })) as SwipeHistory[];
-      
-      // Sort by timestamp in memory instead
-      return results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     } catch (error) {
+      if (error instanceof Error && error.message.includes('missing index')) {
+        console.error('Missing Firestore index. Please create the following index:');
+        console.error('Collection: swipe_history');
+        console.error('Fields indexed: userId Ascending, timestamp Descending');
+        // Return unordered results as fallback
+        const fallbackQuery = query(
+          collection(db, 'swipe_history'),
+          where('userId', '==', userId)
+        );
+        const fallbackSnapshot = await getDocs(fallbackQuery);
+        const results = fallbackSnapshot.docs.map(doc => ({
+          ...doc.data(),
+          id: doc.id,
+        })) as SwipeHistory[];
+        return results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      }
       console.error('Error getting swipe history:', error);
       return []; // Return empty array instead of throwing
     }

@@ -1,7 +1,7 @@
 import { OutfitSuggestion, WardrobeItem, User, Category } from '../types';
 import { FirestoreService } from './firestoreService';
 import { StyleService } from './styleService';
-import { getCurrentWeather } from './weatherService';
+import { WeatherService } from './weatherService';
 
 interface ChatResponse {
   text: string;
@@ -87,23 +87,29 @@ export class ChatbotService {
   }
 
   private static async handleWeatherQuery(userId: string, message: string): Promise<ChatResponse> {
-      const weather = await getCurrentWeather();
-      if (!weather) {
-          return { text: "I couldn't get the current weather. Can you try again in a bit?" };
+      try {
+        const location = await WeatherService.getCurrentLocation();
+        const weather = await WeatherService.getCurrentWeather(location.coords.latitude, location.coords.longitude);
+        if (!weather) {
+            return { text: "I couldn't get the current weather. Can you try again in a bit?" };
+        }
+        
+        let responseText = `The weather is ${weather.temperature}\u00b0C and ${weather.condition}. `;
+        
+        if (message.includes('cold') || weather.temperature < 10) {
+            responseText += "Definitely time to bundle up! Think warm layers, knits, and a good coat.";
+        } else if (message.includes('hot') || weather.temperature > 22) {
+            responseText += "It's warm out! Time for light fabrics like cotton or linen.";
+        } else {
+            responseText += "It's pretty mild. A great day for a light jacket or just a sweater.";
+        }
+        
+        // Future enhancement: call StyleService with weather context.
+        return { text: responseText };
+      } catch (error) {
+        console.error(error);
+        return { text: "I couldn't get the current weather. Can you try again in a bit?" };
       }
-      
-      let responseText = `The weather is ${weather.temperature}°C and ${weather.condition}. `;
-      
-      if (message.includes('cold') || weather.temperature < 10) {
-          responseText += "Definitely time to bundle up! Think warm layers, knits, and a good coat.";
-      } else if (message.includes('hot') || weather.temperature > 22) {
-          responseText += "It's warm out! Time for light fabrics like cotton or linen.";
-      } else {
-          responseText += "It's pretty mild. A great day for a light jacket or just a sweater.";
-      }
-      
-      // Future enhancement: call StyleService with weather context.
-      return { text: responseText };
   }
   
   private static async handleOccasionQuery(userId: string, message: string): Promise<ChatResponse> {

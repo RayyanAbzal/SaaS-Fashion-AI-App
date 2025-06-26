@@ -2,36 +2,67 @@
 # Copy these rules to your Firebase Console > Storage > Rules
 
 rules_version = '2';
+
+// Craft rules based on our app's requirements
 service firebase.storage {
   match /b/{bucket}/o {
-    // Allow authenticated users to read and write their own wardrobe items
-    match /wardrobe/{userId}/{itemId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
     }
     
-    // Allow authenticated users to read and write their own profile images
-    match /profiles/{userId}/{fileName} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isOwner(userId) {
+      return request.auth.uid == userId;
     }
     
-    // Allow authenticated users to read and write their own outfit images
-    match /outfits/{userId}/{outfitId}/{fileName} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isValidImage() {
+      return request.resource.contentType.matches('image/.*')
+        && request.resource.size < 5 * 1024 * 1024; // 5MB max
     }
     
-    // Allow authenticated users to read and write their own style moments
-    match /style-moments/{userId}/{momentId}/{fileName} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isValidPath(userId) {
+      return request.resource.name.matches(userId + '/.*');
     }
 
-    // Allow the test upload to work
-    match /test-connection.txt {
-      allow read, write: if request.auth != null;
+    // User profile images
+    match /users/{userId}/profile/{imageId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() 
+        && isOwner(userId)
+        && isValidImage();
     }
     
-    // Deny all other access by default for security
-    // match /{allPaths=**} {
-    //   allow read, write: if false;
-    // }
+    // Wardrobe items
+    match /wardrobe/{userId}/{itemId} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow write: if isAuthenticated() 
+        && isOwner(userId)
+        && isValidImage()
+        && isValidPath(userId);
+    }
+    
+    // Style moments (public posts)
+    match /moments/{momentId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() 
+        && isValidImage()
+        && isValidPath(request.auth.uid);
+      allow delete: if isAuthenticated() 
+        && isOwner(resource.metadata.userId);
+    }
+    
+    // Temporary uploads (for processing)
+    match /temp/{userId}/{fileName} {
+      allow read, write: if isAuthenticated() 
+        && isOwner(userId)
+        && isValidImage();
+        
+      // Auto-delete after 24 hours
+      match /{allPaths=**} {
+        allow read, write: if isAuthenticated() 
+          && isOwner(userId)
+          && resource.timeCreated + duration.value(24, 'h') > request.time;
+      }
+    }
   }
 } 

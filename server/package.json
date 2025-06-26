@@ -8,12 +8,14 @@
     "dev": "nodemon index.js"
   },
   "dependencies": {
+    "@google-cloud/vision": "^5.2.0",
     "axios": "^1.7.2",
     "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "firebase-admin": "^13.4.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"
   }
-} 
+}

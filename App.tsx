@@ -14,9 +14,12 @@ import CameraScreen from './src/screens/CameraScreen';
 import WardrobeScreen from './src/screens/WardrobeScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import OutfitSwiperScreen from './src/screens/OutfitSwiperScreen';
+import OutfitCreationScreen from './src/screens/OutfitCreationScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import BrandSelectionScreen from './src/screens/BrandSelectionScreen';
 import StyleMateScreen from './src/screens/StyleMateScreen';
+import AchievementsScreen from './src/screens/AchievementsScreen';
+import PinterestBoardScreen from './src/screens/PinterestBoardScreen';
 
 // Import services and context
 import { AuthService } from './src/services/authService';
@@ -81,7 +84,7 @@ function MainTabs() {
       />
       <Tab.Screen 
         name="Wardrobe" 
-        component={WardrobeScreen}
+        component={WardrobeScreenWrapper}
         options={{ title: 'Wardrobe' }}
       />
       <Tab.Screen 
@@ -96,6 +99,14 @@ function MainTabs() {
       />
     </Tab.Navigator>
   );
+}
+
+function WardrobeScreenWrapper(props: any) {
+  return <WardrobeScreen {...props} />;
+}
+
+function OutfitCreationScreenWrapper(props: any) {
+  return <OutfitCreationScreen {...props} />;
 }
 
 function AppNavigator() {
@@ -145,6 +156,14 @@ function AppNavigator() {
             }}
           />
           <Stack.Screen 
+            name="OutfitCreation" 
+            component={OutfitCreationScreenWrapper}
+            options={{
+              headerShown: false,
+              presentation: 'modal',
+            }}
+          />
+          <Stack.Screen 
             name="BrandSelection" 
             component={BrandSelectionScreen}
             options={{
@@ -159,6 +178,33 @@ function AppNavigator() {
               headerShown: true,
               title: 'StyleMate AI',
               presentation: 'modal',
+            }}
+          />
+          <Stack.Screen 
+            name="Achievements" 
+            component={AchievementsScreen}
+            options={{
+              title: 'Achievements',
+              headerTintColor: Colors.text,
+              headerStyle: {
+                backgroundColor: Colors.background,
+              },
+            }}
+          />
+          <Stack.Screen
+            name="PinterestBoard"
+            component={PinterestBoardScreen}
+            options={{
+              headerShown: true,
+              title: 'Pinterest Board',
+              headerStyle: {
+                backgroundColor: Colors.background,
+              },
+              headerTintColor: Colors.primary,
+              headerTitleStyle: {
+                color: Colors.text,
+                fontWeight: 'bold',
+              },
             }}
           />
         </>

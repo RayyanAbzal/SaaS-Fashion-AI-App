@@ -144,7 +144,7 @@ const FirebaseStorageService = {
       }
 
       // Use the main uploadImage method with proper path
-      const path = `wardrobe/${userId}/${itemId}.jpg`;
+      const path = `wardrobe/${userId}/${itemId}`;
       return await FirebaseStorageService.uploadImage(imageUri, path);
     } catch (error) {
       console.error('Error uploading wardrobe image:', error);
@@ -158,8 +158,8 @@ const FirebaseStorageService = {
         throw new Error('User ID is required');
       }
 
-      const storageRef = ref(storage, `wardrobe/${userId}/${itemId}.jpg`);
-      await deleteObject(storageRef);
+      const path = `wardrobe/${userId}/${itemId}`;
+      await FirebaseStorageService.deleteImage(path);
       console.log('Wardrobe image deleted successfully');
     } catch (error) {
       console.error('Error deleting image:', error);
@@ -168,21 +168,28 @@ const FirebaseStorageService = {
   },
 
   async uploadBulkImages(imageUris: string[], itemIds: string[], userId: string): Promise<string[]> {
+    if (imageUris.length !== itemIds.length) {
+      throw new Error('Number of images does not match number of item IDs');
+    }
+
     try {
-      if (!userId) {
-        throw new Error('User ID is required');
-      }
-
-      const uploadPromises = imageUris.map(async (imageUri, index) => {
-        const itemId = itemIds[index];
-        return FirebaseStorageService.uploadWardrobeImage(imageUri, itemId, userId);
-      });
-
-      const downloadURLs = await Promise.all(uploadPromises);
-      return downloadURLs;
+      const uploadPromises = imageUris.map((uri, index) => 
+        FirebaseStorageService.uploadWardrobeImage(uri, itemIds[index], userId)
+      );
+      return await Promise.all(uploadPromises);
     } catch (error) {
       console.error('Error uploading bulk images:', error);
       throw new Error('Failed to upload bulk images');
+    }
+  },
+
+  async deleteImage(path: string): Promise<void> {
+    try {
+      const storageRef = ref(storage, path);
+      await deleteObject(storageRef);
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      throw error;
     }
   }
 };

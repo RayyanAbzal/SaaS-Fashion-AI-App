@@ -116,6 +116,7 @@ export interface WardrobeItem {
   colorAnalysis?: ColorAnalysis;
   weatherCompatibility: WeatherCompatibility;
   purchaseInfo?: PurchaseInfo;
+  imageHash?: string;
 }
 
 export interface ColorAnalysis {
@@ -166,10 +167,10 @@ export interface Outfit {
 }
 
 export interface ColorHarmony {
-  type: 'monochromatic' | 'complementary' | 'analogous' | 'triadic' | 'split-complementary';
+  scheme: 'monochromatic' | 'complementary' | 'analogous' | 'triadic' | 'split-complementary' | 'none';
   score: number;
-  colors: string[];
-  description: string;
+  dominantColor: string;
+  styleTips: string[];
 }
 
 export interface SocialStats {
@@ -353,7 +354,7 @@ export interface Notification {
 export interface Achievement {
   id: string;
   userId: string;
-  type: 'streak' | 'style' | 'social' | 'special';
+  type: 'streak' | 'style' | 'social' | 'special' | 'wardrobe' | 'category';
   title: string;
   description: string;
   icon: string;
@@ -389,20 +390,25 @@ export interface LoadingState {
 }
 
 export type MainTabParamList = {
-    Home: undefined;
-    Wardrobe: { capturedImageUri?: string };
-    Chat: undefined;
-    Profile: undefined;
+  Home: undefined;
+  Wardrobe: undefined;
+  StyleMate: undefined;
+  Profile: undefined;
 };
 
 export type RootStackParamList = {
-  Auth: undefined;
   MainTabs: NavigatorScreenParams<MainTabParamList>;
+  Auth: undefined;
+  Login: undefined;
   Camera: undefined;
-  OutfitSwiper: undefined;
   BrandSelection: undefined;
-  StyleMate: undefined;
+  ClothingRecognition: undefined;
+  OutfitCreation: { selectedItems: WardrobeItem[] };
+  Achievements: undefined;
   StylePreferences: undefined;
+  OutfitSwiper: undefined;
+  StyleMate: undefined;
+  PinterestBoard: undefined;
 };
 
 export interface BrandCategory {
@@ -429,10 +435,19 @@ export interface Brand {
 
 export interface OutfitSuggestion {
   id: string;
-  items: ShoppingItem[];
+  items: (WardrobeItem | ShoppingItem)[];
   reasoning: string;
   occasion: string;
   weather: string[];
+  confidence: number;
+  totalPrice?: number;
+  retailerMix?: {
+    wardrobeItems: number;
+    shoppingItems: number;
+    retailers: string[];
+  };
+  styleNotes?: string[];
+  colorHarmony?: ColorHarmony;
 }
 
 export interface StyleRecommendation {
@@ -458,4 +473,78 @@ export interface SwipeAction {
   type: 'like' | 'pass';
   outfitId: string;
   timestamp: Date;
-} 
+}
+
+export interface OutfitCreationRequest {
+  selectedItems: WardrobeItem[];
+  occasion: Occasion;
+  weather?: WeatherData;
+  stylePreferences?: string[];
+  budget?: {
+    min: number;
+    max: number;
+    currency: string;
+  };
+  retailerPreferences?: {
+    enabled: boolean;
+    retailers: string[];
+    includeWardrobeOnly: boolean;
+  };
+  aiPreferences?: {
+    considerWeather: boolean;
+    considerOccasion: boolean;
+    considerStylePreferences: boolean;
+    generateMultipleOutfits: boolean;
+    maxOutfits: number;
+  };
+}
+
+export interface RetailerConfig {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  categories: Category[];
+  priceRange: 'budget' | 'mid-range' | 'premium' | 'luxury';
+  country: string;
+  logo?: string;
+}
+
+export interface OccasionConfig {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  styleGuidelines: string[];
+  weatherConsiderations: string[];
+  colorPalette: string[];
+  formality: 'casual' | 'smart-casual' | 'business' | 'formal' | 'party';
+}
+
+export interface OutfitGenerationResult {
+  outfits: OutfitSuggestion[];
+  analysis: {
+    selectedItemsAnalysis: string;
+    colorHarmony: ColorHarmony;
+    styleCompatibility: number;
+    weatherAppropriateness: number;
+    occasionFit: number;
+  };
+  recommendations: {
+    missingCategories: Category[];
+    suggestedColors: string[];
+    styleTips: string[];
+  };
+}
+
+export interface ColorWheelColor {
+  hue: number;
+  complementary: string;
+  analogous: string[];
+  isNeutral?: boolean;
+  pairsWithAll?: boolean;
+}
+
+export type ColorWheelDefinition = {
+  [key: string]: ColorWheelColor;
+}; 

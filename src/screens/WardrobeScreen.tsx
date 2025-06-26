@@ -8,11 +8,11 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  SafeAreaView,
   Image,
   TextInput,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CompositeScreenProps, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -26,8 +26,15 @@ import FirebaseStorageService from '../services/firebaseStorageService';
 import { useUser } from '../contexts/UserContext';
 import WardrobeItemForm from '../components/WardrobeItemForm';
 import { AuthService } from '../services/authService';
+import { AchievementService } from '../services/achievementService';
 
-type WardrobeScreenProps = BottomTabScreenProps<MainTabParamList, 'Wardrobe'>;
+type WardrobeScreenRouteParams = {
+  capturedImageUri?: string;
+};
+
+type WardrobeScreenProps = BottomTabScreenProps<MainTabParamList, 'Wardrobe'> & {
+  route: { params?: WardrobeScreenRouteParams };
+};
 
 const CATEGORIES = [
   { key: 'all', label: 'All', icon: 'shirt-outline' },
@@ -50,35 +57,28 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showSearch, setShowSearch] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedItemsForOutfit, setSelectedItemsForOutfit] = useState<WardrobeItem[]>([]);
+  const [selectedItemsForDeletion, setSelectedItemsForDeletion] = useState<WardrobeItem[]>([]);
+  const [saving, setSaving] = useState(false);
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerRight: () => (
-        <View style={{ flexDirection: 'row' }}>
-          <TouchableOpacity style={{ padding: 10 }} onPress={() => setShowSearch(!showSearch)}>
-            <Ionicons name={showSearch ? "close" : "search-outline"} size={26} color={Colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={{ padding: 10 }} onPress={handleOpenNativeCamera}>
-            <Ionicons name="camera-outline" size={26} color={Colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={{ padding: 10, marginLeft: 10 }} onPress={handleAddItemFromLibrary}>
-            <Ionicons name="images-outline" size={26} color={Colors.primary} />
-          </TouchableOpacity>
-        </View>
-      ),
+      headerShown: false
     });
-  }, [navigation, showSearch]);
+  }, [navigation]);
 
   useEffect(() => {
-    // This effect handles the image coming back from the CameraScreen
-    if (route.params?.capturedImageUri) {
-      setImageToAdd(route.params.capturedImageUri);
+    const params = route?.params as WardrobeScreenRouteParams | undefined;
+    const capturedImageUri = params?.capturedImageUri;
+    if (capturedImageUri) {
+      setImageToAdd(capturedImageUri);
       setSelectedItem(null);
       setIsFormVisible(true);
       // Reset the param to avoid re-triggering
       navigation.setParams({ capturedImageUri: undefined });
     }
-  }, [route.params?.capturedImageUri]);
+  }, [route?.params]);
 
   useEffect(() => {
     const checkUserAndFetchItems = async () => {
@@ -90,9 +90,9 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
 
       setLoading(true);
       try {
-        const unsubscribe = FirestoreService.onWardrobeUpdate(
+      const unsubscribe = FirestoreService.onWardrobeUpdate(
           user.id,
-          (updatedItems: WardrobeItem[]) => {
+        (updatedItems: WardrobeItem[]) => {
             // Ensure all items have required properties
             const validItems = (updatedItems || []).filter(item => 
               item && 
@@ -103,16 +103,16 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
               item.imageUrl
             );
             setItems(validItems);
-            if (loading) setLoading(false);
-          },
-          (error: Error) => {
+          if (loading) setLoading(false);
+        },
+        (error: Error) => {
             console.error('Firestore error:', error);
-            setLoading(false);
-            Alert.alert('Error', 'Could not fetch wardrobe items.');
-          }
-        );
+          setLoading(false);
+          Alert.alert('Error', 'Could not fetch wardrobe items.');
+        }
+      );
 
-        return () => unsubscribe();
+      return () => unsubscribe();
       } catch (error) {
         console.error('Error in checkUserAndFetchItems:', error);
         setLoading(false);
@@ -152,11 +152,47 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
     setFilteredItems(filtered);
   }, [items, selectedCategory, searchQuery]);
 
-  const handleSaveItem = async (item: WardrobeItem) => {
+  const handleSaveItem = async (item: WardrobeItem, forceSave: boolean = false) => {
     try {
+      setSaving(true);
       const currentUser = await AuthService.getCurrentUser();
       if (!currentUser || !currentUser.id) {
         throw new Error("Authentication error: No user is currently logged in. Please log out and log back in.");
+      }
+
+      // Duplicate check: name, brand, category, color
+      const isDuplicate = items.some(existing =>
+        existing.name?.toLowerCase() === item.name?.toLowerCase() &&
+        existing.brand?.toLowerCase() === item.brand?.toLowerCase() &&
+        existing.category === item.category &&
+        existing.color?.toLowerCase() === item.color?.toLowerCase()
+      );
+      if (isDuplicate && !forceSave) {
+        setSaving(false);
+        Alert.alert(
+          "Duplicate Item",
+          "This item already exists in your wardrobe.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Add Anyway", style: "default", onPress: () => handleSaveItem(item, true) }
+          ]
+        );
+        return;
+      }
+
+      // Duplicate image check using imageHash
+      const isImageDuplicate = item.imageHash && items.some(existing => existing.imageHash === item.imageHash);
+      if (isImageDuplicate && !forceSave) {
+        setSaving(false);
+        Alert.alert(
+          "Duplicate Image",
+          "An item with this image already exists in your wardrobe.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Add Anyway", style: "default", onPress: () => handleSaveItem(item, true) }
+          ]
+        );
+        return;
       }
 
       console.log('User is authenticated with ID:', currentUser.id);
@@ -164,7 +200,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
       if (!imageToAdd) {
         throw new Error("No image is selected to be uploaded.");
       }
-      
+
       const newItemId = selectedItem?.id || FirestoreService.getNewId();
       let finalItem: WardrobeItem = { 
         ...item, 
@@ -191,7 +227,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
       }
 
       if (!finalItem.createdAt) {
-          finalItem.createdAt = new Date();
+        finalItem.createdAt = new Date();
       }
       finalItem.updatedAt = new Date();
       
@@ -201,23 +237,50 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
       
       const itemWithUrl = { ...finalItem, imageUrl };
 
-      if (selectedItem) {
-        console.log('Updating existing item in Firestore...');
-        await FirestoreService.updateWardrobeItem(itemWithUrl);
-        Alert.alert('Success', 'Item updated successfully!');
-      } else {
-        console.log('Adding new item to Firestore...');
-        await FirestoreService.addWardrobeItem(itemWithUrl);
-        Alert.alert('Success', 'Item added to your wardrobe!');
+      try {
+        if (selectedItem) {
+          console.log('Updating existing item in Firestore...');
+          await FirestoreService.updateWardrobeItem(itemWithUrl);
+          Alert.alert('Success', 'Item updated successfully!');
+        } else {
+          console.log('Adding new item to Firestore...');
+          await FirestoreService.addWardrobeItem(itemWithUrl);
+          Alert.alert('Success', 'Item added to your wardrobe!');
+        }
+        setIsFormVisible(false);
+        setSelectedItem(null);
+        setImageToAdd(null);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('similar item already exists') && !forceSave) {
+          Alert.alert(
+            'Duplicate Item Detected',
+            'A similar item already exists in your wardrobe. Would you like to add it anyway?',
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                onPress: () => {
+                  // Clean up the uploaded image since we're not using it
+                  FirebaseStorageService.deleteImage(`wardrobe/${finalItem.userId}/${finalItem.id}`).catch(console.error);
+                }
+              },
+              {
+                text: 'Add Anyway',
+                style: 'default',
+                onPress: () => handleSaveItem(item, true)
+              }
+            ]
+          );
+          return;
+        }
+        throw error;
       }
     } catch (error) {
       console.error('Error saving item:', error);
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
       Alert.alert('Error Saving Item', errorMessage);
     } finally {
-      setIsFormVisible(false);
-      setSelectedItem(null);
-      setImageToAdd(null);
+      setSaving(false);
     }
   };
 
@@ -265,6 +328,75 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
       console.error("Error deleting item:", error);
     }
   };
+  
+  const handleItemPress = (item: WardrobeItem) => {
+    if (isSelectionMode) {
+      handleItemSelect(item);
+      // Also allow outfit selection in selection mode
+      const isSelected = selectedItemsForOutfit.some(selected => selected.id === item.id);
+      if (isSelected) {
+        setSelectedItemsForOutfit(selectedItemsForOutfit.filter(selected => selected.id !== item.id));
+      } else {
+        setSelectedItemsForOutfit([...selectedItemsForOutfit, item]);
+      }
+    } else {
+      setSelectedItem(item); 
+      setImageToAdd(item.imageUrl); 
+      setIsFormVisible(true); 
+    }
+  };
+
+  const handleCreateOutfit = () => {
+    if (selectedItemsForOutfit.length === 0) {
+      Alert.alert('No Items Selected', 'Please select at least one item to create an outfit.');
+      return;
+    }
+    
+    // Navigate to outfit creation screen with selected items
+    navigation.navigate('OutfitCreation', {
+      selectedItems: selectedItemsForOutfit
+    });
+    
+    // Reset selection mode
+    setIsSelectionMode(false);
+    setSelectedItemsForOutfit([]);
+  };
+
+  const handleItemLongPress = (item: WardrobeItem) => {
+    if (!isSelectionMode) {
+      setIsSelectionMode(true);
+      setSelectedItemsForDeletion([item]);
+    }
+  };
+
+  const handleItemSelect = (item: WardrobeItem) => {
+    if (isSelectionMode) {
+      const isSelected = selectedItemsForDeletion.some(selected => selected.id === item.id);
+      if (isSelected) {
+        setSelectedItemsForDeletion(selectedItemsForDeletion.filter(selected => selected.id !== item.id));
+      } else {
+        setSelectedItemsForDeletion([...selectedItemsForDeletion, item]);
+      }
+    }
+  };
+
+  const handleDeleteSelectedItems = async () => {
+    if (selectedItemsForDeletion.length === 0) return;
+    Alert.alert(
+      'Delete Items',
+      `Are you sure you want to delete ${selectedItemsForDeletion.length} items?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: async () => {
+          for (const item of selectedItemsForDeletion) {
+            await confirmDeleteItem(item);
+          }
+          setSelectedItemsForDeletion([]);
+          setIsSelectionMode(false);
+        }}
+      ]
+    );
+  };
 
   const renderCategoryTab = ({ item }: { item: typeof CATEGORIES[0] }) => (
     <TouchableOpacity
@@ -289,28 +421,36 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
   );
 
   const renderItem = ({ item }: { item: WardrobeItem }) => {
-    // Ensure item has required properties
-    if (!item || !item.id || !item.name || !item.brand || !item.imageUrl) {
-      return null;
-    }
-
+    if (!item || !item.id || !item.name || !item.brand || !item.imageUrl) return null;
+    const isSelectedForDeletion = selectedItemsForDeletion.some(selected => selected.id === item.id);
+    const isSelectedForOutfit = selectedItemsForOutfit.some(selected => selected.id === item.id);
     return (
-      <TouchableOpacity 
-          style={styles.itemContainer} 
-          onPress={() => { 
-              setSelectedItem(item); 
-              setImageToAdd(item.imageUrl); 
-              setIsFormVisible(true); 
-          }}>
+      <TouchableOpacity
+        style={[
+          styles.itemContainer,
+          isSelectionMode && (isSelectedForDeletion || isSelectedForOutfit) && styles.selectedItemContainer
+        ]}
+        onPress={() => handleItemPress(item)}
+        onLongPress={() => handleItemLongPress(item)}
+        disabled={loading}
+      >
         <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
         <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
         <Text style={styles.itemBrand} numberOfLines={1}>{item.brand}</Text>
         {item.subcategory && (
           <Text style={styles.itemSubcategory} numberOfLines={1}>{item.subcategory}</Text>
         )}
-        <TouchableOpacity style={styles.deleteButton} onPress={() => handleDeleteItem(item)}>
-            <Ionicons name="trash-outline" size={20} color={Colors.text} />
-        </TouchableOpacity>
+        {/* Selection indicators */}
+        {isSelectionMode && (
+          <View style={styles.selectionIndicatorsRow}>
+            <View style={[styles.selectionIndicator, isSelectedForDeletion && styles.selectionIndicatorSelected, { marginRight: 4 }]}> 
+              <Ionicons name={isSelectedForDeletion ? "trash" : "trash-outline"} size={18} color={isSelectedForDeletion ? Colors.error : Colors.textSecondary} />
+            </View>
+            <View style={[styles.selectionIndicator, isSelectedForOutfit && styles.selectionIndicatorSelected]}> 
+              <Ionicons name={isSelectedForOutfit ? "checkmark-circle" : "ellipse-outline"} size={18} color={isSelectedForOutfit ? Colors.primary : Colors.textSecondary} />
+            </View>
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -322,7 +462,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
     const categoryItems = items.filter(item => item.category === category);
     if (categoryItems.length === 0) return null;
 
-    return (
+  return (
       <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderContent}>
           <Ionicons name={categoryInfo.icon as any} size={24} color={Colors.primary} />
@@ -356,10 +496,10 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
       );
     }
 
-    // Group items by category for "All" view in the correct order
+    // Group filteredItems by category for "All" view in the correct order
     const categoryOrder = ['tops', 'bottoms', 'shoes', 'accessories', 'outerwear'];
     const groupedItems = categoryOrder.map(category => {
-      const categoryItems = items.filter(item => item.category === category);
+      const categoryItems = filteredItems.filter(item => item.category === category);
       return { category, items: categoryItems };
     }).filter(group => group.items.length > 0);
 
@@ -395,69 +535,118 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
     );
   };
 
+  const renderSelectionModeBar = () => (
+    <View style={styles.selectionModeBar}>
+      <Text style={styles.selectionModeText}>{selectedItemsForDeletion.length} to delete, {selectedItemsForOutfit.length} to create outfit</Text>
+      <TouchableOpacity style={styles.deleteSelectedButton} onPress={handleDeleteSelectedItems}>
+        <Ionicons name="trash" size={20} color={Colors.textInverse} />
+        <Text style={styles.deleteSelectedText}>Delete Selected</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.createOutfitButton} onPress={handleCreateOutfit}>
+        <Ionicons name="sparkles" size={20} color={Colors.textInverse} />
+        <Text style={styles.createOutfitText}>Create Outfit</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Search Bar */}
+      {/* Custom header with title and icons in a single row */}
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>Wardrobe</Text>
+        <View style={styles.headerIconsRow}>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => setShowSearch(!showSearch)}>
+            <Ionicons name={showSearch ? "close" : "search-outline"} size={26} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={handleOpenNativeCamera}>
+            <Ionicons name="camera-outline" size={26} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={handleAddItemFromLibrary}>
+            <Ionicons name="images-outline" size={26} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => setIsSelectionMode(!isSelectionMode)}>
+            <Ionicons name={isSelectionMode ? "close-circle" : "shirt-outline"} size={26} color={isSelectionMode ? Colors.error : Colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Category tabs directly below header */}
+      <View style={styles.categoryTabsWrapper}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsContainer}>
+          {CATEGORIES.map((cat) => renderCategoryTab({ item: cat }))}
+        </ScrollView>
+      </View>
+
+      {/* Optional: Search bar below category tabs */}
       {showSearch && (
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search your wardrobe..."
-            placeholderTextColor={Colors.textSecondary}
+            placeholder="Search wardrobe..."
             value={searchQuery}
             onChangeText={setSearchQuery}
+            placeholderTextColor={Colors.textSecondary}
           />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearSearchButton}>
-              <Ionicons name="close-circle" size={20} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.clearSearchButton} onPress={() => setSearchQuery('')}>
+            <Ionicons name="close" size={18} color={Colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       )}
 
-      {/* Category Tabs */}
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.categoryTabsContainer}
-        contentContainerStyle={styles.categoryTabsContent}
-      >
-        {CATEGORIES.map(category => (
-          <View key={category.key}>
-            {renderCategoryTab({ item: category })}
-          </View>
-        ))}
-      </ScrollView>
+      {/* Selection mode bar */}
+      {isSelectionMode && renderSelectionModeBar()}
 
-      {/* Items List */}
-      {loading ? (
-        <ActivityIndicator size="large" color={Colors.primary} style={{ flex: 1 }} />
-      ) : (
-        renderSectionedItems()
-      )}
-      
-      {isFormVisible && imageToAdd && (
-        <Modal
-          animationType="slide"
-          transparent={false}
-          visible={isFormVisible}
-          onRequestClose={() => {
-            setIsFormVisible(false);
-            setSelectedItem(null);
-            setImageToAdd(null);
-          }}
-        >
-          <WardrobeItemForm
-            imageUri={imageToAdd}
-            existingItem={selectedItem || undefined}
-            onSave={handleSaveItem}
-            onCancel={() => {
-              setIsFormVisible(false);
-              setSelectedItem(null);
-              setImageToAdd(null);
+      {/* Main content */}
+      <View style={styles.contentContainer}>
+        {loading ? (
+          <ActivityIndicator size="large" color={Colors.primary} style={{ flex: 1 }} />
+        ) : (
+          renderSectionedItems()
+        )}
+      </View>
+
+      {/* Create Outfit Button */}
+      {isSelectionMode && selectedItemsForOutfit.length > 0 && (
+        <View style={styles.createOutfitContainer}>
+          <TouchableOpacity style={styles.createOutfitButton} onPress={handleCreateOutfit}>
+            <Ionicons name="shirt" size={24} color={Colors.text} />
+            <Text style={styles.createOutfitText}>
+              Create Outfit ({selectedItemsForOutfit.length} selected)
+            </Text>
+          </TouchableOpacity>
+        </View>
+        )}
+        
+        {isFormVisible && imageToAdd && (
+            <Modal
+            animationType="slide"
+            transparent={false}
+            visible={isFormVisible}
+            onRequestClose={() => {
+                setIsFormVisible(false);
+                setSelectedItem(null);
+                setImageToAdd(null);
             }}
-          />
-        </Modal>
+            >
+            <WardrobeItemForm
+                imageUri={imageToAdd}
+                existingItem={selectedItem || undefined}
+                onSave={handleSaveItem}
+                onCancel={() => {
+                    setIsFormVisible(false);
+                    setSelectedItem(null);
+                    setImageToAdd(null);
+                }}
+                saving={saving}
+            />
+            </Modal>
+        )}
+
+      {saving && (
+        <View style={styles.savingOverlay}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.savingText}>Saving to wardrobe...</Text>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -467,6 +656,43 @@ const styles = StyleSheet.create({
   container: { 
     flex: 1, 
     backgroundColor: Colors.background 
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: Colors.background,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  headerIconsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconButton: {
+    marginLeft: 12,
+    padding: 4,
+  },
+  categoryTabsWrapper: {
+    backgroundColor: Colors.background,
+    paddingBottom: 8,
+  },
+  categoryTabsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    gap: 8,
+  },
+  contentContainer: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingTop: 8,
   },
   searchContainer: {
     paddingHorizontal: 20,
@@ -481,8 +707,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: Colors.text,
-    flexDirection: 'row',
-    alignItems: 'center',
+        flexDirection: 'row', 
+        alignItems: 'center', 
   },
   clearSearchButton: {
     position: 'absolute',
@@ -490,42 +716,13 @@ const styles = StyleSheet.create({
     top: 15,
     padding: 5,
   },
-  categoryTabsContainer: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  categoryTabsContent: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  categoryTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 12,
-    borderRadius: 20,
-    backgroundColor: Colors.backgroundCard,
-  },
-  categoryTabActive: {
-    backgroundColor: Colors.primary,
-  },
-  categoryTabText: {
-    marginLeft: 6,
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-  },
-  categoryTabTextActive: {
-    color: Colors.text,
-  },
   scrollContainer: {
     flex: 1,
   },
   scrollContentContainer: {
     paddingBottom: 20,
   },
-  listContainer: {
+    listContainer: {
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 20,
@@ -563,12 +760,12 @@ const styles = StyleSheet.create({
   itemWrapper: {
     width: '50%',
     padding: 6,
-  },
-  itemContainer: { 
-    backgroundColor: Colors.backgroundCard, 
-    borderRadius: 12, 
+    },
+    itemContainer: { 
+        backgroundColor: Colors.backgroundCard, 
+        borderRadius: 12, 
     padding: 12, 
-    alignItems: 'center',
+        alignItems: 'center',
     height: 200,
   },
   itemImage: { 
@@ -596,32 +793,153 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontStyle: 'italic',
   },
-  deleteButton: { 
-    position: 'absolute', 
-    top: 5, 
-    right: 5, 
-    backgroundColor: 'rgba(0,0,0,0.5)', 
-    padding: 5, 
-    borderRadius: 15,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: '50%',
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.text,
-    marginTop: 16,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    marginTop: 8,
+    deleteButton: { 
+        position: 'absolute', 
+        top: 5, 
+        right: 5, 
+        backgroundColor: 'rgba(0,0,0,0.5)', 
+        padding: 5, 
+        borderRadius: 15,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: '50%',
+    },
+    emptyText: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: Colors.text,
+        marginTop: 16,
+    },
+    emptySubtext: {
+        fontSize: 14,
+        color: Colors.textSecondary,
+        marginTop: 8,
   },
   emptyListContainer: {
     paddingBottom: 20,
+  },
+  selectedItemContainer: {
+    backgroundColor: `${Colors.primary}20`,
+    borderColor: Colors.primary,
+    borderWidth: 2,
+  },
+  selectionIndicator: {
+    position: 'absolute',
+    top: 5,
+    right: 5,
+    padding: 5,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  selectionIndicatorSelected: {
+    backgroundColor: Colors.primary,
+  },
+  createOutfitContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: Colors.backgroundCard,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  createOutfitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+  },
+  createOutfitText: {
+    marginLeft: 12,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  selectionModeIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: 10,
+    backgroundColor: Colors.backgroundCard,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectionModeText: {
+    marginLeft: 10,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  selectionModeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.backgroundCard,
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  deleteSelectedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.error,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginLeft: 10,
+  },
+  deleteSelectedText: {
+    color: Colors.textInverse,
+    fontWeight: 'bold',
+    marginLeft: 6,
+  },
+  categoryTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 12,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundCard,
+  },
+  categoryTabActive: {
+    backgroundColor: Colors.primary,
+  },
+  categoryTabText: {
+    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  categoryTabTextActive: {
+    color: Colors.text,
+  },
+  selectionIndicatorsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  savingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  savingText: {
+    color: Colors.primary,
+    fontSize: 18,
+    marginTop: 12,
+    fontWeight: 'bold',
   },
 });
