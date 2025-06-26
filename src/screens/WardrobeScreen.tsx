@@ -58,8 +58,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showSearch, setShowSearch] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [selectedItemsForOutfit, setSelectedItemsForOutfit] = useState<WardrobeItem[]>([]);
-  const [selectedItemsForDeletion, setSelectedItemsForDeletion] = useState<WardrobeItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<WardrobeItem[]>([]);
   const [saving, setSaving] = useState(false);
 
   useLayoutEffect(() => {
@@ -314,88 +313,70 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
     );
   };
 
-  const confirmDeleteItem = async (item: WardrobeItem) => {
+  const confirmDeleteItem = async (item: WardrobeItem, silent: boolean = false) => {
     try {
       if (!item || !item.id || !item.userId) {
-        Alert.alert("Error", "Invalid item data.");
+        if (!silent) Alert.alert("Error", "Invalid item data.");
         return;
       }
-      
       await FirestoreService.deleteWardrobeItem(item.userId, item.id);
-      Alert.alert("Success", "Item deleted.");
+      if (!silent) Alert.alert("Success", "Item deleted.");
     } catch (error) {
-      Alert.alert("Error", "Could not delete item.");
+      if (!silent) Alert.alert("Error", "Could not delete item.");
       console.error("Error deleting item:", error);
     }
   };
   
   const handleItemPress = (item: WardrobeItem) => {
     if (isSelectionMode) {
-      handleItemSelect(item);
-      // Also allow outfit selection in selection mode
-      const isSelected = selectedItemsForOutfit.some(selected => selected.id === item.id);
+      const isSelected = selectedItems.some(selected => selected.id === item.id);
       if (isSelected) {
-        setSelectedItemsForOutfit(selectedItemsForOutfit.filter(selected => selected.id !== item.id));
+        setSelectedItems(selectedItems.filter(selected => selected.id !== item.id));
       } else {
-        setSelectedItemsForOutfit([...selectedItemsForOutfit, item]);
+        setSelectedItems([...selectedItems, item]);
       }
     } else {
-      setSelectedItem(item); 
-      setImageToAdd(item.imageUrl); 
-      setIsFormVisible(true); 
+      setSelectedItem(item);
+      setImageToAdd(item.imageUrl);
+      setIsFormVisible(true);
     }
   };
 
-  const handleCreateOutfit = () => {
-    if (selectedItemsForOutfit.length === 0) {
-      Alert.alert('No Items Selected', 'Please select at least one item to create an outfit.');
-      return;
-    }
-    
-    // Navigate to outfit creation screen with selected items
-    navigation.navigate('OutfitCreation', {
-      selectedItems: selectedItemsForOutfit
-    });
-    
-    // Reset selection mode
-    setIsSelectionMode(false);
-    setSelectedItemsForOutfit([]);
-  };
-
-  const handleItemLongPress = (item: WardrobeItem) => {
-    if (!isSelectionMode) {
-      setIsSelectionMode(true);
-      setSelectedItemsForDeletion([item]);
-    }
-  };
-
-  const handleItemSelect = (item: WardrobeItem) => {
-    if (isSelectionMode) {
-      const isSelected = selectedItemsForDeletion.some(selected => selected.id === item.id);
-      if (isSelected) {
-        setSelectedItemsForDeletion(selectedItemsForDeletion.filter(selected => selected.id !== item.id));
-      } else {
-        setSelectedItemsForDeletion([...selectedItemsForDeletion, item]);
-      }
-    }
-  };
+  const handleItemLongPress = undefined;
 
   const handleDeleteSelectedItems = async () => {
-    if (selectedItemsForDeletion.length === 0) return;
+    if (selectedItems.length === 0) return;
     Alert.alert(
       'Delete Items',
-      `Are you sure you want to delete ${selectedItemsForDeletion.length} items?`,
+      `Are you sure you want to delete ${selectedItems.length} item${selectedItems.length > 1 ? 's' : ''}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Delete', style: 'destructive', onPress: async () => {
-          for (const item of selectedItemsForDeletion) {
-            await confirmDeleteItem(item);
+          try {
+            for (const item of selectedItems) {
+              await confirmDeleteItem(item, true); // silent mode
+            }
+            setSelectedItems([]);
+            setIsSelectionMode(false);
+            Alert.alert('Success', `${selectedItems.length} item${selectedItems.length > 1 ? 's' : ''} deleted.`);
+          } catch (error) {
+            Alert.alert('Error', 'Could not delete all selected items.');
           }
-          setSelectedItemsForDeletion([]);
-          setIsSelectionMode(false);
         }}
       ]
     );
+  };
+
+  const handleCreateOutfit = () => {
+    if (selectedItems.length === 0) {
+      Alert.alert('No Items Selected', 'Please select at least one item to create an outfit.');
+      return;
+    }
+    navigation.navigate('OutfitCreation', {
+      selectedItems: selectedItems
+    });
+    setIsSelectionMode(false);
+    setSelectedItems([]);
   };
 
   const renderCategoryTab = ({ item }: { item: typeof CATEGORIES[0] }) => (
@@ -422,16 +403,14 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
 
   const renderItem = ({ item }: { item: WardrobeItem }) => {
     if (!item || !item.id || !item.name || !item.brand || !item.imageUrl) return null;
-    const isSelectedForDeletion = selectedItemsForDeletion.some(selected => selected.id === item.id);
-    const isSelectedForOutfit = selectedItemsForOutfit.some(selected => selected.id === item.id);
+    const isSelected = isSelectionMode && selectedItems.some(selected => selected.id === item.id);
     return (
       <TouchableOpacity
         style={[
           styles.itemContainer,
-          isSelectionMode && (isSelectedForDeletion || isSelectedForOutfit) && styles.selectedItemContainer
+          isSelected && styles.selectedItemContainer
         ]}
         onPress={() => handleItemPress(item)}
-        onLongPress={() => handleItemLongPress(item)}
         disabled={loading}
       >
         <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
@@ -439,17 +418,6 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
         <Text style={styles.itemBrand} numberOfLines={1}>{item.brand}</Text>
         {item.subcategory && (
           <Text style={styles.itemSubcategory} numberOfLines={1}>{item.subcategory}</Text>
-        )}
-        {/* Selection indicators */}
-        {isSelectionMode && (
-          <View style={styles.selectionIndicatorsRow}>
-            <View style={[styles.selectionIndicator, isSelectedForDeletion && styles.selectionIndicatorSelected, { marginRight: 4 }]}> 
-              <Ionicons name={isSelectedForDeletion ? "trash" : "trash-outline"} size={18} color={isSelectedForDeletion ? Colors.error : Colors.textSecondary} />
-            </View>
-            <View style={[styles.selectionIndicator, isSelectedForOutfit && styles.selectionIndicatorSelected]}> 
-              <Ionicons name={isSelectedForOutfit ? "checkmark-circle" : "ellipse-outline"} size={18} color={isSelectedForOutfit ? Colors.primary : Colors.textSecondary} />
-            </View>
-          </View>
         )}
       </TouchableOpacity>
     );
@@ -535,19 +503,39 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
     );
   };
 
-  const renderSelectionModeBar = () => (
-    <View style={styles.selectionModeBar}>
-      <Text style={styles.selectionModeText}>{selectedItemsForDeletion.length} to delete, {selectedItemsForOutfit.length} to create outfit</Text>
-      <TouchableOpacity style={styles.deleteSelectedButton} onPress={handleDeleteSelectedItems}>
-        <Ionicons name="trash" size={20} color={Colors.textInverse} />
-        <Text style={styles.deleteSelectedText}>Delete Selected</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.createOutfitButton} onPress={handleCreateOutfit}>
-        <Ionicons name="sparkles" size={20} color={Colors.textInverse} />
-        <Text style={styles.createOutfitText}>Create Outfit</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  const renderSelectionModeBar = () => {
+    const numSelected = selectedItems.length;
+    return (
+      <View style={styles.selectionModeBar}>
+        <Text style={styles.selectionModeText} numberOfLines={1}>
+          {numSelected} selected
+        </Text>
+        <View style={styles.selectionModeActions}>
+          <TouchableOpacity
+            style={styles.rubbishBinButton}
+            onPress={() => {
+              if (selectedItems.length > 0) {
+                handleDeleteSelectedItems();
+              } else {
+                Alert.alert('No items selected', 'Tap an item to select it for deletion.');
+              }
+            }}
+            activeOpacity={selectedItems.length > 0 ? 0.7 : 1}
+          >
+            <Ionicons name="trash" size={28} color={selectedItems.length === 0 ? Colors.textSecondary : Colors.error} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.createOutfitButton}
+            onPress={handleCreateOutfit}
+            disabled={selectedItems.length === 0}
+          >
+            <Ionicons name="shirt" size={24} color={selectedItems.length === 0 ? Colors.textSecondary : Colors.text} />
+            <Text style={[styles.createOutfitText, selectedItems.length === 0 && { color: Colors.textSecondary }]}>Create Outfit</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -564,7 +552,10 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
           <TouchableOpacity style={styles.headerIconButton} onPress={handleAddItemFromLibrary}>
             <Ionicons name="images-outline" size={26} color={Colors.primary} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerIconButton} onPress={() => setIsSelectionMode(!isSelectionMode)}>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => {
+            setIsSelectionMode(!isSelectionMode);
+            if (!isSelectionMode) setSelectedItems([]);
+          }}>
             <Ionicons name={isSelectionMode ? "close-circle" : "shirt-outline"} size={26} color={isSelectionMode ? Colors.error : Colors.primary} />
           </TouchableOpacity>
         </View>
@@ -604,18 +595,6 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
           renderSectionedItems()
         )}
       </View>
-
-      {/* Create Outfit Button */}
-      {isSelectionMode && selectedItemsForOutfit.length > 0 && (
-        <View style={styles.createOutfitContainer}>
-          <TouchableOpacity style={styles.createOutfitButton} onPress={handleCreateOutfit}>
-            <Ionicons name="shirt" size={24} color={Colors.text} />
-            <Text style={styles.createOutfitText}>
-              Create Outfit ({selectedItemsForOutfit.length} selected)
-            </Text>
-          </TouchableOpacity>
-        </View>
-        )}
         
         {isFormVisible && imageToAdd && (
             <Modal
@@ -822,43 +801,38 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   selectedItemContainer: {
-    backgroundColor: `${Colors.primary}20`,
     borderColor: Colors.primary,
-    borderWidth: 2,
-  },
-  selectionIndicator: {
-    position: 'absolute',
-    top: 5,
-    right: 5,
-    padding: 5,
-    borderRadius: 15,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  selectionIndicatorSelected: {
-    backgroundColor: Colors.primary,
-  },
-  createOutfitContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
+    borderWidth: 4,
     backgroundColor: Colors.backgroundCard,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
   },
-  createOutfitButton: {
+  selectionDotRow: {
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 12,
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
+    marginVertical: 4,
+    gap: 6,
   },
-  createOutfitText: {
-    marginLeft: 12,
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: Colors.text,
+  selectionDotDelete: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.error,
+    marginHorizontal: 2,
+    borderWidth: 2,
+    borderColor: Colors.background,
+  },
+  selectionDotOutfit: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.primary,
+    marginHorizontal: 2,
+    borderWidth: 2,
+    borderColor: Colors.background,
   },
   selectionModeIndicator: {
     position: 'absolute',
@@ -871,10 +845,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   selectionModeText: {
-    marginLeft: 10,
     fontSize: 16,
     fontWeight: 'bold',
     color: Colors.text,
+    flexShrink: 1,
+    marginRight: 8,
+    minWidth: 120,
+  },
+  selectionModeActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
   },
   selectionModeBar: {
     flexDirection: 'row',
@@ -884,6 +866,7 @@ const styles = StyleSheet.create({
     padding: 10,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    flexWrap: 'wrap',
   },
   deleteSelectedButton: {
     flexDirection: 'row',
@@ -920,11 +903,6 @@ const styles = StyleSheet.create({
   categoryTabTextActive: {
     color: Colors.text,
   },
-  selectionIndicatorsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
   savingOverlay: {
     position: 'absolute',
     top: 0,
@@ -941,5 +919,38 @@ const styles = StyleSheet.create({
     fontSize: 18,
     marginTop: 12,
     fontWeight: 'bold',
+  },
+  createOutfitContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: Colors.backgroundCard,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  createOutfitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+  },
+  createOutfitText: {
+    marginLeft: 12,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  rubbishBinButton: {
+    marginLeft: 8,
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 20,
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.error,
   },
 });
