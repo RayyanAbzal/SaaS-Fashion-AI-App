@@ -7,6 +7,9 @@ const admin = require('firebase-admin');
 const fetch = require('node-fetch');
 const vision = require('@google-cloud/vision');
 const path = require('path');
+const multer = require('multer');
+const fs = require('fs');
+const { Configuration, OpenAIApi } = require('openai');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -938,4 +941,35 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`Shopping feed available at: http://localhost:${PORT}/api/shopping-feed`);
   console.log(`Health check available at: http://localhost:${PORT}/api/health`);
+});
+
+const upload = multer({ dest: 'uploads/' });
+const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
+
+// Audio transcription endpoint
+app.post('/api/transcribe-audio', upload.single('audio'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No audio file uploaded' });
+    }
+    const audioPath = req.file.path;
+    const audioStream = fs.createReadStream(audioPath);
+    const response = await openai.createTranscription(
+      audioStream,
+      'whisper-1',
+      undefined, // prompt
+      'json',
+      0.2, // temperature
+      'en' // language
+    );
+    fs.unlink(audioPath, () => {}); // Clean up temp file
+    if (response.data && response.data.text) {
+      return res.json({ success: true, transcript: response.data.text });
+    } else {
+      return res.status(500).json({ success: false, error: 'No transcript returned' });
+    }
+  } catch (error) {
+    console.error('Transcription error:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
+  }
 }); 

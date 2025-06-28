@@ -12,7 +12,7 @@ interface Env {
 }
 
 export const env: Env = {
-  OPENWEATHER_API_KEY: Constants.expoConfig?.extra?.openWeatherApiKey || '',
+  OPENWEATHER_API_KEY: '943f34fc6b214df6bc0221722250501',
   OPENAI_API_KEY: Constants.expoConfig?.extra?.openaiApiKey || '',
   FIREBASE_API_KEY: Constants.expoConfig?.extra?.firebaseApiKey || '',
   FIREBASE_AUTH_DOMAIN: Constants.expoConfig?.extra?.firebaseAuthDomain || '',
@@ -50,8 +50,7 @@ const requiredVars = [
   'FIREBASE_PROJECT_ID',
   'FIREBASE_STORAGE_BUCKET',
   'FIREBASE_MESSAGING_SENDER_ID',
-  'FIREBASE_APP_ID',
-  'WEATHER_API_KEY',
+  'FIREBASE_APP_ID'
 ];
 
 const missingVars = requiredVars.filter(key => !extra[key]);

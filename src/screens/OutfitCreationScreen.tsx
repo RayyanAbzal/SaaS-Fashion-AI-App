@@ -22,7 +22,8 @@ import {
   OutfitGenerationResult 
 } from '../types';
 import OutfitGenerationService from '../services/outfitGenerationService';
-import { getCurrentWeather } from '../services/weatherService';
+import { WeatherService } from '../services/weatherService';
+import * as Location from 'expo-location';
 
 const { width } = Dimensions.get('window');
 
@@ -67,7 +68,8 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
       // Get current weather if needed
       let weather;
       if (considerWeather) {
-        weather = await getCurrentWeather();
+        const location = await WeatherService.getCurrentLocation();
+        weather = await WeatherService.getCurrentWeather(location.coords.latitude, location.coords.longitude);
       }
 
       const request: OutfitCreationRequest = {

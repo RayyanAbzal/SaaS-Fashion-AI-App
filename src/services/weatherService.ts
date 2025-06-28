@@ -57,27 +57,28 @@ export class WeatherService {
 
   static async getCurrentWeather(lat: number, lon: number): Promise<WeatherData> {
     try {
-      const response = await fetch(
-        `${this.BASE_URL}/weather?lat=${lat}&lon=${lon}&appid=${this.API_KEY}&units=metric`
-      );
-      
+      const apiKey = this.API_KEY;
+      const url = `https://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${lat},${lon}`;
+      console.log('DEBUG: WeatherAPI.com URL:', url);
+      const response = await fetch(url);
       if (!response.ok) {
+        const errorBody = await response.text();
+        console.log('DEBUG: WeatherAPI.com response status:', response.status);
+        console.log('DEBUG: WeatherAPI.com response body:', errorBody);
         throw new Error('Failed to fetch weather data');
       }
-
       const data = await response.json();
-
       return {
-        temperature: Math.round(data.main.temp),
-        feelsLike: Math.round(data.main.feels_like),
-        humidity: data.main.humidity,
-        windSpeed: data.wind.speed,
-        condition: data.weather[0].main,
-        icon: `https://openweathermap.org/img/wn/${data.weather[0].icon}@2x.png`,
-        description: data.weather[0].description,
-        precipitation: data.rain ? data.rain['1h'] || 0 : 0,
-        uv: await this.getUVIndex(lat, lon),
-        forecast: await this.getForecast(lat, lon)
+        temperature: Math.round(data.current.temp_c),
+        feelsLike: Math.round(data.current.feelslike_c),
+        humidity: data.current.humidity,
+        windSpeed: data.current.wind_kph,
+        condition: data.current.condition.text,
+        icon: `https:${data.current.condition.icon}`,
+        description: data.current.condition.text,
+        precipitation: data.current.precip_mm,
+        uv: data.current.uv,
+        forecast: [] // You can implement forecast fetching if needed
       };
     } catch (error) {
       console.error('Error fetching weather:', error);

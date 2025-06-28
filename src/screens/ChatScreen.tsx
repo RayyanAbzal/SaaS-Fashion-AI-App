@@ -9,6 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Animated,
+  Easing,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +19,9 @@ import MessageBubble from '../components/MessageBubble';
 import { ChatMessage, OutfitSuggestion, WardrobeItem } from '../types';
 import { ChatbotService } from '../services/chatbotService';
 import { useUser } from '../contexts/UserContext';
+import * as FileSystem from 'expo-file-system';
+import { Audio } from 'expo-av';
+import mime from 'mime';
 
 export default function ChatScreen() {
   const { user } = useUser();
@@ -24,6 +29,9 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -83,6 +91,119 @@ export default function ChatScreen() {
     }
   };
 
+  // Audio recording logic
+  const handleAudioRecord = async () => {
+    if (isRecording) {
+      // Stop recording
+      setIsRecording(false);
+      try {
+        await recording?.stopAndUnloadAsync();
+        const uri = recording?.getURI();
+        setRecording(null);
+        if (uri) {
+          await handleTranscribeAudio(uri);
+        }
+      } catch (e) {
+        alert('Error stopping recording');
+      }
+    } else {
+      // Start recording
+      try {
+        const { status } = await Audio.requestPermissionsAsync();
+        if (status !== 'granted') {
+          alert('Permission to access microphone is required!');
+          return;
+        }
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+        const rec = new Audio.Recording();
+        await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+        await rec.startAsync();
+        setRecording(rec);
+        setIsRecording(true);
+      } catch (e) {
+        alert('Could not start recording');
+      }
+    }
+  };
+
+  // Upload and transcribe audio
+  const handleTranscribeAudio = async (audioUri: string) => {
+    setIsTranscribing(true);
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(audioUri);
+      if (!fileInfo.exists) throw new Error('Audio file not found');
+      const fileType = mime.getType(audioUri) || 'audio/m4a';
+      const formData = new FormData();
+      formData.append('audio', {
+        uri: audioUri,
+        name: 'audio.m4a',
+        type: fileType,
+      } as any);
+      const response = await fetch('http://localhost:3000/api/transcribe-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'multipart/form-data' },
+        body: formData,
+      });
+      const data = await response.json();
+      if (data.success && data.transcript) {
+        // Show transcript as user message and send to chatbot
+        handleSend(data.transcript);
+      } else {
+        alert('Transcription failed');
+      }
+    } catch (e) {
+      alert('Error transcribing audio');
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // SoundWave component for animated bars
+  const SoundWave = ({ barCount = 5, barColor = Colors.primary }) => {
+    const animations = useRef([...Array(barCount)].map(() => new Animated.Value(1))).current;
+
+    useEffect(() => {
+      const animate = (bar: Animated.Value, delay: number) => {
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(bar, {
+              toValue: 2.2,
+              duration: 350,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+              delay,
+            }),
+            Animated.timing(bar, {
+              toValue: 1,
+              duration: 350,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ])
+        ).start();
+      };
+      animations.forEach((bar, i) => animate(bar, i * 100));
+      return () => animations.forEach(bar => bar.stopAnimation());
+    }, [animations]);
+
+    return (
+      <View style={styles.soundWaveContainer}>
+        {animations.map((bar, i) => (
+          <Animated.View
+            key={i}
+            style={[
+              styles.soundBar,
+              {
+                backgroundColor: barColor,
+                transform: [{ scaleY: bar }],
+              },
+            ]}
+          />
+        ))}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <FlatList
@@ -101,19 +222,25 @@ export default function ChatScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={90}
       >
+        {isRecording && <SoundWave />}
         <View style={styles.inputContainer}>
-            <TextInput
+          <TouchableOpacity style={styles.audioButton} onPress={handleAudioRecord}>
+            <Ionicons name={isRecording ? "stop" : "mic"} size={24} color={isRecording ? Colors.error : Colors.primary} />
+          </TouchableOpacity>
+          <TextInput
             style={styles.textInput}
             value={input}
             onChangeText={setInput}
             placeholder="Ask me for style advice..."
             placeholderTextColor={Colors.textSecondary}
-            />
-            <TouchableOpacity style={styles.sendButton} onPress={() => handleSend(input)}>
-                <Ionicons name="send" size={24} color={Colors.primary} />
-            </TouchableOpacity>
+          />
+          <TouchableOpacity style={styles.sendButton} onPress={() => handleSend(input)}>
+            <Ionicons name="send" size={24} color={Colors.primary} />
+          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {isTranscribing && <ActivityIndicator style={{paddingVertical: 10}} size="small" color={Colors.primary} />}
     </SafeAreaView>
   );
 }
@@ -148,5 +275,23 @@ const styles = StyleSheet.create({
   sendButton: {
     marginLeft: 10,
     padding: 10,
+  },
+  audioButton: {
+    marginRight: 10,
+    padding: 10,
+  },
+  soundWaveContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    marginBottom: 8,
+    height: 28,
+  },
+  soundBar: {
+    width: 6,
+    height: 24,
+    borderRadius: 3,
+    marginHorizontal: 3,
+    backgroundColor: Colors.primary,
   },
 }); 
