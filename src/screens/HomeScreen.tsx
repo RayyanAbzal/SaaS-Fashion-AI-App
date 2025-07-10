@@ -173,19 +173,19 @@ export default function HomeScreen() {
             <View style={styles.weatherDetails}>
               <View style={styles.weatherDetail}>
                 <Ionicons name="thermometer" size={20} color={Colors.text} />
-                <Text style={styles.detailText} numberOfLines={1} ellipsizeMode="tail">
+                <Text style={styles.detailText}>
                   Feels like {weather.feelsLike}°C
                 </Text>
               </View>
               <View style={styles.weatherDetail}>
                 <Ionicons name="water" size={20} color={Colors.text} />
-                <Text style={styles.detailText} numberOfLines={1} ellipsizeMode="tail">
+                <Text style={styles.detailText}>
                   Humidity {weather.humidity}%
                 </Text>
               </View>
               <View style={styles.weatherDetail}>
                 <Ionicons name="umbrella" size={20} color={Colors.text} />
-                <Text style={styles.detailText} numberOfLines={1} ellipsizeMode="tail">
+                <Text style={styles.detailText}>
                   Rain {weather.precipitation}mm
                 </Text>
               </View>
@@ -389,8 +389,8 @@ const styles = StyleSheet.create({
   weatherDetail: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1, // ensure each detail takes equal space
-    minWidth: 0, // allow shrinking
+    minWidth: '33%', // each detail takes at least a third of the row
+    marginBottom: 6, // space if it wraps
   },
   detailText: {
     marginLeft: 8,
