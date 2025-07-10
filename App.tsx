@@ -13,6 +13,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import CameraScreen from './src/screens/CameraScreen';
 import WardrobeScreen from './src/screens/WardrobeScreen';
 import ChatScreen from './src/screens/ChatScreen';
+import OutfitsScreen from './src/screens/LikedOutfitsScreen';
 import OutfitSwiperScreen from './src/screens/OutfitSwiperScreen';
 import OutfitCreationScreen from './src/screens/OutfitCreationScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
@@ -40,6 +41,8 @@ function MainTabs() {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Wardrobe') {
             iconName = focused ? 'shirt' : 'shirt-outline';
+          } else if (route.name === 'Outfits') {
+            iconName = focused ? 'heart' : 'heart-outline';
           } else if (route.name === 'Chat') {
             iconName = focused ? 'chatbubble' : 'chatbubble-outline';
           } else if (route.name === 'Profile') {
@@ -86,6 +89,11 @@ function MainTabs() {
         name="Wardrobe" 
         component={WardrobeScreenWrapper}
         options={{ title: 'Wardrobe' }}
+      />
+      <Tab.Screen 
+        name="Outfits" 
+        component={OutfitsScreen}
+        options={{ title: 'Outfits' }}
       />
       <Tab.Screen 
         name="Chat" 

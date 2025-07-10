@@ -184,34 +184,12 @@ export interface SocialStats {
   totalRatings: number;
 }
 
-export interface ShoppingItem {
-  id: string;
-  name: string;
-  brand: string;
-  price: number;
-  imageUrl: string;
-  purchaseUrl: string;
-  productUrl?: string;
-  category: Category;
-  color: string;
-  description?: string;
-  materials?: string[]; // e.g., ['cotton', 'polyester']
-  tags?: string[];
-  retailer?: Retailer;
-}
-
 export interface ItemAvailability {
   inStock: boolean;
   quantity?: number;
   backorder?: boolean;
   estimatedDelivery?: Date;
   storePickup?: boolean;
-}
-
-export interface Retailer {
-  id: string;
-  name: string;
-  logoUrl?: string;
 }
 
 export interface ChatMessage {
@@ -293,6 +271,7 @@ export interface SwipeContext {
   mood: string;
   timeOfDay: string;
   location?: string;
+  outfitSignature?: string;
 }
 
 export interface SwipeFeedback {
@@ -392,7 +371,8 @@ export interface LoadingState {
 export type MainTabParamList = {
   Home: undefined;
   Wardrobe: undefined;
-  StyleMate: undefined;
+  Outfits: undefined;
+  Chat: undefined;
   Profile: undefined;
 };
 
@@ -497,17 +477,6 @@ export interface OutfitCreationRequest {
     generateMultipleOutfits: boolean;
     maxOutfits: number;
   };
-}
-
-export interface RetailerConfig {
-  id: string;
-  name: string;
-  url: string;
-  enabled: boolean;
-  categories: Category[];
-  priceRange: 'budget' | 'mid-range' | 'premium' | 'luxury';
-  country: string;
-  logo?: string;
 }
 
 export interface OccasionConfig {

@@ -33,6 +33,27 @@ StyleMate is a revolutionary fashion app designed specifically for college stude
 - **Limited-time challenges** and competitions
 - **Voice notes** for outfit feedback
 
+### Outfit Swiper
+- **Unique Outfit Combinations**: Each outfit suggestion is unique and won't repeat
+- **Swipe Interface**: Intuitive left/right swipe to like or dislike outfits
+- **Duplicate Prevention**: Advanced system prevents showing the same outfit combination twice
+- **Smart Filtering**: Filters out previously shown outfits based on item combinations
+- **Continuous Suggestions**: Automatically fetches new suggestions when you run out
+- **Liked Outfits Storage**: Automatically saves liked outfits to your wardrobe for future reference
+
+### Outfits Tab
+- **Tabbed Organization**: Separate sections for different types of outfits
+  - **Liked from Swiper**: Outfits you've liked from the "What should I wear?" feature
+  - **Created**: Manually created outfits
+  - **AI Generated**: Outfits created by AI features
+  - **Pinterest**: Outfits inspired by Pinterest boards
+  - **All**: Combined view of all outfits
+- **Outfit Reconstruction**: Reconstructs original outfit items from swipe history
+- **Easy Management**: Remove outfits from your collection
+- **Quick Access**: Direct navigation back to the outfit swiper
+- **Persistent Storage**: Liked outfits are saved as actual Outfit objects in your wardrobe
+- **Smart Filtering**: Each tab shows relevant outfits based on their source and type
+
 ## 🛠 **Tech Stack**
 
 - **Frontend**: React Native + Expo (TypeScript)

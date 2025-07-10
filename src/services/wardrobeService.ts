@@ -1,4 +1,4 @@
-import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, updateDoc, deleteDoc, doc, orderBy } from 'firebase/firestore';
 import { db } from './firebase';
 import { WardrobeItem } from '../types';
 
@@ -25,67 +25,11 @@ export async function deleteWardrobeItem(itemId: string): Promise<void> {
 }
 
 export async function getWardrobeItems(): Promise<WardrobeItem[]> {
-  // For now, return mock data - in production this would fetch from Firestore
-  return [
-    {
-      id: '1',
-      userId: 'user1',
-      name: 'Blue Denim Jacket',
-      category: 'outerwear',
-      subcategory: 'jacket',
-      color: 'blue',
-      brand: 'Levi\'s',
-      size: 'M',
-      imageUrl: 'https://via.placeholder.com/150',
-      tags: ['casual', 'denim', 'jacket'],
-      isFavorite: false,
-      wearCount: 5,
-      lastWorn: new Date('2024-01-15'),
-      createdAt: new Date('2023-12-01'),
-      updatedAt: new Date('2024-01-15'),
-      confidenceScore: 85,
-      colorAnalysis: {
-        primaryColor: '#1E40AF',
-        secondaryColors: ['#3B82F6', '#60A5FA'],
-        colorFamily: 'cool',
-        seasonality: ['fall', 'winter'],
-        skinToneCompatibility: ['warm', 'cool'],
-      },
-      weatherCompatibility: {
-        temperatureRange: { min: 5, max: 20 },
-        weatherConditions: ['cloudy', 'rainy', 'windy'],
-        seasonality: ['fall', 'winter'],
-      },
-    },
-    {
-      id: '2',
-      userId: 'user1',
-      name: 'White T-Shirt',
-      category: 'tops',
-      subcategory: 't-shirt',
-      color: 'white',
-      brand: 'H&M',
-      size: 'L',
-      imageUrl: 'https://via.placeholder.com/150',
-      tags: ['casual', 'basic', 't-shirt'],
-      isFavorite: true,
-      wearCount: 12,
-      lastWorn: new Date('2024-01-20'),
-      createdAt: new Date('2023-11-15'),
-      updatedAt: new Date('2024-01-20'),
-      confidenceScore: 92,
-      colorAnalysis: {
-        primaryColor: '#FFFFFF',
-        secondaryColors: ['#F3F4F6', '#E5E7EB'],
-        colorFamily: 'neutral',
-        seasonality: ['spring', 'summer', 'fall', 'winter'],
-        skinToneCompatibility: ['warm', 'cool'],
-      },
-      weatherCompatibility: {
-        temperatureRange: { min: 15, max: 30 },
-        weatherConditions: ['sunny', 'partly-cloudy', 'cloudy'],
-        seasonality: ['spring', 'summer', 'fall'],
-      },
-    },
-  ];
+  // Fetch from Firestore instead of returning mock data
+  const itemsCol = collection(db, 'wardrobe');
+  const itemSnapshot = await getDocs(query(itemsCol, orderBy('createdAt', 'desc')));
+  const items = itemSnapshot.docs.map(doc => Object.assign({}, doc.data(), { id: doc.id }));
+  // Filter for required fields and then cast to WardrobeItem[]
+  const validItems = items.filter(item => item.id && item.name && item.category && item.brand && item.color && item.imageUrl && item.userId).map(item => item as WardrobeItem);
+  return validItems;
 } 

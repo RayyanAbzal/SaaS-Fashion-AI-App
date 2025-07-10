@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,17 +9,18 @@ import {
   Alert,
   Image,
   Linking,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
-import { Outfit, OutfitSuggestion, WardrobeItem, ShoppingItem } from '../types';
+import { Outfit, OutfitSuggestion, WardrobeItem } from '../types';
 import { getWardrobeItems } from '../services/wardrobeService';
-import { getCurrentWeather } from '../services/weatherService';
 import { StyleService } from '../services/styleService';
 import { AuthService } from '../services/authService';
 import { FirestoreService } from '../services/firestoreService';
-import Swiper from 'react-native-deck-swiper';
+import { Swipeable } from 'react-native-gesture-handler';
+import Animated, { Extrapolate, interpolate } from 'react-native-reanimated';
 
 const { width, height } = Dimensions.get('window');
 
@@ -27,186 +28,346 @@ interface OutfitSwiperScreenProps {
   navigation: any;
 }
 
-const OutfitCard = ({ card }: { card: OutfitSuggestion }) => {
-  const wardrobeItems = card.items.filter(item => 'userId' in item).map(item => item as unknown as WardrobeItem);
-  const shoppingItems = card.items.filter(item => !('userId' in item)) as ShoppingItem[];
+const CARD_HEIGHT = height * 0.8;
 
-  const renderItem = (item: WardrobeItem | ShoppingItem, index: number) => {
+// Custom animation for the carousel items
+const useCustomAnimation = () => {
+  return (value: number) => {
+    'worklet';
+
+    const rotate = interpolate(
+      value,
+      [-1, 0, 1],
+      [-10, 0, 10],
+      Extrapolate.CLAMP
+    );
+    const translationX = interpolate(
+      value,
+      [-1, 0, 1],
+      [-width, 0, width],
+      Extrapolate.CLAMP
+    );
+    const opacity = interpolate(
+      value,
+      [-1.5, -1, 0, 1, 1.5],
+      [0, 1, 1, 1, 0],
+      Extrapolate.CLAMP
+    );
+
+    return {
+      transform: [{ rotate: `${rotate}deg` }, { translateX: translationX }],
+      opacity,
+    };
+  };
+};
+
+const OutfitCard = ({ card, onScroll, onDislike, onLike }: { card: OutfitSuggestion, onScroll: (y: number) => void, onDislike: () => void, onLike: () => void }) => {
+  const renderItem = (item: WardrobeItem | any, index: number) => {
     const isWardrobeItem = 'userId' in item;
+    const isRetailerItem = !!item.retailer && !isWardrobeItem;
     return (
-      <View key={item.id + index} style={styles.itemContainer}>
-        <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
-        <View style={styles.itemDetails}>
-            <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
-            <Text style={styles.itemBrand}>{item.brand}</Text>
-            {isWardrobeItem ? (
-                <View style={styles.itemTagWardrobe}>
-                    <Text style={styles.itemTagText}>From Your Wardrobe</Text>
-                </View>
-            ) : (
-                <View style={styles.itemTagShopping}>
-                    <Text style={styles.itemTagText}>Shop Now</Text>
-                </View>
-            )}
-        </View>
+      <View key={item.id + index} style={styles.verticalItemContainer}>
+        <Image source={{ uri: item.imageUrl }} style={styles.verticalItemImage} />
+        <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+        <Text style={styles.itemBrand}>{item.brand}</Text>
+        {item.price && (
+          <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
+        )}
+        {isWardrobeItem ? (
+          <View style={styles.itemTagWardrobe}>
+            <Text style={styles.itemTagText}>From Your Wardrobe</Text>
+          </View>
+        ) : isRetailerItem ? (
+          <TouchableOpacity
+            style={styles.itemTagShopping}
+            onPress={() => Linking.openURL(item.productUrl)}
+          >
+            <Text style={styles.itemTagText}>Shop Now</Text>
+          </TouchableOpacity>
+        ) : null}
+        {item.description && (
+          <Text style={styles.itemDescription}>{item.description}</Text>
+        )}
       </View>
     );
   };
-    
+
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { height: CARD_HEIGHT }]}> 
       <Text style={styles.outfitName}>Outfit Suggestion</Text>
-      <View style={styles.itemsRow}>
-        {card.items.slice(0, 2).map(renderItem)}
+      <ScrollView
+        style={styles.itemsScroll}
+        contentContainerStyle={[styles.itemsColumn, { flexGrow: 1 }]}
+        showsVerticalScrollIndicator={true}
+        scrollEnabled={true}
+        onScroll={e => onScroll(e.nativeEvent.contentOffset.y)}
+        scrollEventThrottle={16}
+      >
+        {card.items.map(renderItem)}
+        <View style={styles.outfitSummaryContainer}>
+          <Text style={styles.outfitSummaryTitle}>Outfit Summary</Text>
+          <Text style={styles.outfitReasoning}>{card.reasoning}</Text>
+        </View>
+      </ScrollView>
+      <View style={styles.cardFooterRow}>
+        <TouchableOpacity style={styles.dislikeButton} onPress={onDislike}>
+          <Text style={styles.dislikeButtonText}>👎</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.likeButton} onPress={onLike}>
+          <Text style={styles.likeButtonText}>👍</Text>
+        </TouchableOpacity>
       </View>
-      <Text style={styles.outfitReasoning}>{card.reasoning}</Text>
     </View>
   );
 };
 
-export default function OutfitSwiperScreen({ navigation }: OutfitSwiperScreenProps) {
-  const [suggestions, setSuggestions] = useState<OutfitSuggestion[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [cardIndex, setCardIndex] = useState(0);
-  const swiperRef = useRef<Swiper<OutfitSuggestion>>(null);
+const OutfitSwiperScreen: React.FC<OutfitSwiperScreenProps> = ({ navigation }) => {
+  const [outfits, setOutfits] = useState<OutfitSuggestion[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const swipeableRef = useRef<Swipeable>(null);
+
+  const loadOutfits = async () => {
+    setLoading(true);
+    try {
+      const user = await AuthService.getCurrentUser();
+      const userId = user?.id;
+      if (!userId) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      const suggestions = await StyleService.getOutfitSuggestions(userId);
+      setOutfits(suggestions);
+      setCurrentIndex(0);
+    } catch (error) {
+      console.error('Error loading outfits:', error);
+      Alert.alert('Error', 'Failed to load outfit suggestions');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetchSuggestions();
+    loadOutfits();
   }, []);
 
-  const fetchSuggestions = async () => {
-    setIsLoading(true);
+  const handleSwipe = async (direction: 'left' | 'right') => {
+    const currentOutfit = outfits[currentIndex];
+    if (!currentOutfit) return;
+
     try {
-      const currentUser = await AuthService.getCurrentUser();
-      if (currentUser) {
-        const outfitSuggestions = await StyleService.getOutfitSuggestions(currentUser.id);
-        setSuggestions(outfitSuggestions);
+      const user = await AuthService.getCurrentUser();
+      const userId = user?.id;
+      if (!userId) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      // Record user interaction for reinforcement learning
+      const action = direction === 'right' ? 'like' : 'dislike';
+      await StyleService.recordUserInteraction(
+        userId,
+        currentOutfit.items,
+        action,
+        'casual'
+      );
+
+      // Show feedback based on action
+      if (direction === 'right') {
+        Alert.alert('Outfit Liked!', 'We\'ll use this feedback to improve your future suggestions.');
       } else {
-        console.warn('No current user found for outfit suggestions');
-        setSuggestions([]);
+        Alert.alert('Outfit Disliked', 'We\'ll use this feedback to improve your future suggestions.');
+      }
+
+      // Move to next outfit
+      if (currentIndex < outfits.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+      } else {
+        // Generate new outfits when we run out
+        await loadOutfits();
       }
     } catch (error) {
-      console.error('Error fetching outfit suggestions:', error);
-      setSuggestions([]);
-    } finally {
-      setIsLoading(false);
+      console.error('Error recording user interaction:', error);
+      Alert.alert('Error', 'Failed to record your preference. Please try again.');
     }
   };
 
-  const handleSwipe = async (index: number, action: 'like' | 'dislike' | 'superlike') => {
-    setCardIndex(index + 1);
-    const suggestion = suggestions[index];
-    const currentUser = await AuthService.getCurrentUser();
-    if(currentUser && suggestion){
-      await FirestoreService.addSwipeRecord(currentUser.id, suggestion.id, action, {});
-    }
-  };
-
-  const openShoppingLink = () => {
-    if(suggestions.length === 0) return;
-    const suggestion = suggestions[cardIndex];
-    if (suggestion) {
-        const shoppingItem = suggestion.items.find(item => !('userId' in item)) as ShoppingItem | undefined;
-        if(shoppingItem && (shoppingItem.productUrl || shoppingItem.purchaseUrl)) {
-            const url = shoppingItem.productUrl || shoppingItem.purchaseUrl;
-            Linking.openURL(url).catch(err => console.error("Couldn't load page", err));
-        } else {
-            Alert.alert("No Link", "This outfit doesn't have a shoppable item.");
-        }
-    }
-  }
-
-  if (isLoading) {
+  if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Finding your next look...</Text>
-      </SafeAreaView>
+        <Text style={styles.loadingText}>Loading outfit suggestions...</Text>
+      </View>
     );
   }
 
-  if (suggestions.length === 0) {
+  if (outfits.length === 0) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons name="arrow-back" size={24} color={Colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Find Your Look</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-        
-        <View style={styles.emptyContent}>
-          <Ionicons name="sad-outline" size={64} color={Colors.textSecondary} />
-          <Text style={styles.emptyText}>No new outfits for now!</Text>
-          <Text style={styles.emptySubText}>Add more items to your wardrobe or select more brands to get new suggestions.</Text>
-          <TouchableOpacity style={styles.button} onPress={fetchSuggestions}>
-              <Text style={styles.buttonText}>Refresh</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <View style={styles.emptyContainer}>
+        <Text style={styles.emptyText}>No outfit suggestions available</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={loadOutfits}>
+          <Text style={styles.retryButtonText}>Retry</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header with back button */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
+    <View style={styles.container}>
+      <View style={styles.swiperContainer}>
+        <Swipeable
+          ref={swipeableRef}
+          onSwipeableOpen={(direction) => {
+            if (direction === 'left') {
+              handleSwipe('left');
+            } else if (direction === 'right') {
+              handleSwipe('right');
+            }
+          }}
+          renderRightActions={() => (
+            <View style={styles.swipeAction}>
+              <Text style={styles.swipeActionText}>👍</Text>
+            </View>
+          )}
+          renderLeftActions={() => (
+            <View style={styles.swipeAction}>
+              <Text style={styles.swipeActionText}>👎</Text>
+            </View>
+          )}
         >
-          <Ionicons name="arrow-back" size={24} color={Colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Find Your Look</Text>
-        <View style={styles.headerSpacer} />
+          <OutfitCard 
+            card={outfits[currentIndex]} 
+            onScroll={() => {}} 
+            onDislike={() => handleSwipe('left')} 
+            onLike={() => handleSwipe('right')} 
+          />
+        </Swipeable>
       </View>
-
-      <Swiper
-        ref={swiperRef}
-        cards={suggestions}
-        renderCard={(card: OutfitSuggestion) => <OutfitCard card={card} />}
-        onSwipedLeft={(index: number) => handleSwipe(index, 'dislike')}
-        onSwipedRight={(index: number) => handleSwipe(index, 'like')}
-        onSwipedTop={(index: number) => handleSwipe(index, 'superlike')}
-        onSwipedAll={() => {
-            setCardIndex(0);
-            setSuggestions([]);
-            // Optionally fetch more here
-        }}
-        cardIndex={cardIndex}
-        backgroundColor={'transparent'}
-        stackSize={3}
-        stackSeparation={15}
-        animateOverlayLabelsOpacity
-        overlayLabels={{
-          left: { title: 'NOPE', style: { label: styles.overlayLabel, wrapper: styles.overlayWrapperLeft } },
-          right: { title: 'LIKE', style: { label: styles.overlayLabel, wrapper: styles.overlayWrapperRight } },
-          top: { title: 'LOVE IT', style: { label: styles.overlayLabel, wrapper: styles.overlayWrapperTop } },
-        }}
-      />
-      <View style={styles.bottomControls}>
-          <TouchableOpacity style={[styles.controlButton, {backgroundColor: 'red'}]} onPress={() => swiperRef.current?.swipeLeft()}>
-              <Ionicons name="close" size={32} color="#FFF" />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.controlButton, {backgroundColor: 'blue'}]} onPress={openShoppingLink}>
-              <Ionicons name="cart" size={32} color="#FFF" />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.controlButton, {backgroundColor: 'green'}]} onPress={() => swiperRef.current?.swipeRight()}>
-              <Ionicons name="heart" size={32} color="#FFF" />
-          </TouchableOpacity>
+      
+      <View style={styles.progressContainer}>
+        <Text style={styles.progressText}>
+          {currentIndex + 1} of {outfits.length}
+        </Text>
       </View>
-    </SafeAreaView>
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  swiperContainer: {
+    flex: 1,
+    padding: 20,
+  },
+  card: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    minHeight: 400,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  confidenceText: {
+    fontSize: 14,
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  itemsContainer: {
+    marginBottom: 20,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  itemName: {
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  itemColor: {
+    fontSize: 14,
+    color: Colors.secondary,
+  },
+  reasoningContainer: {
+    marginBottom: 20,
+  },
+  reasoningTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    color: Colors.text,
+  },
+  reasoningText: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: Colors.textSecondary,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 'auto',
+  },
+  dislikeButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    backgroundColor: '#ff6b6b',
+  },
+  dislikeButtonText: {
+    fontSize: 18,
+    color: 'white',
+  },
+  likeButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    backgroundColor: '#51cf66',
+  },
+  likeButtonText: {
+    fontSize: 18,
+    color: 'white',
+  },
+  swipeAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    height: '100%',
+  },
+  swipeActionText: {
+    fontSize: 24,
+  },
+  progressContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  progressText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
   },
   loadingContainer: {
     flex: 1,
@@ -215,178 +376,113 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   loadingText: {
-    marginTop: 20,
-    fontSize: 18,
+    marginTop: 16,
+    fontSize: 16,
     color: Colors.text,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
   },
   emptyText: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginBottom: 10,
-  },
-  emptySubText: {
     fontSize: 16,
     color: Colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 40,
     marginBottom: 20,
   },
-  card: {
-    flex: 0.8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.backgroundCard,
-    padding: 20,
-    justifyContent: 'space-between',
+  retryButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
   },
-  outfitName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.text,
-    textAlign: 'center',
-    marginBottom: 15,
-  },
-  itemsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    flex: 1,
-  },
-  itemContainer: {
-    width: width * 0.35,
-    alignItems: 'center',
-  },
-  itemImage: {
-    width: '100%',
-    height: height * 0.25,
-    borderRadius: 15,
-    marginBottom: 10,
-  },
-  itemDetails: {
-    alignItems: 'center',
-  },
-  itemName: {
+  retryButtonText: {
+    color: 'white',
     fontSize: 16,
     fontWeight: '600',
-    color: Colors.text,
-    textAlign: 'center',
+  },
+  // Additional styles for OutfitCard component
+  verticalItemContainer: {
+    marginBottom: 15,
+    padding: 10,
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 8,
+  },
+  verticalItemImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 8,
   },
   itemBrand: {
     fontSize: 14,
-    color: Colors.textSecondary,
-    marginBottom: 5,
+    color: Colors.secondary,
+    marginBottom: 4,
+  },
+  itemPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginBottom: 8,
   },
   itemTagWardrobe: {
     backgroundColor: Colors.primary,
-    borderRadius: 10,
-    paddingVertical: 4,
     paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
   },
   itemTagShopping: {
-    backgroundColor: Colors.secondary,
-    borderRadius: 10,
-    paddingVertical: 4,
+    backgroundColor: '#28a745',
     paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
   },
   itemTagText: {
-    color: Colors.text,
+    color: 'white',
     fontSize: 12,
+    fontWeight: '600',
+  },
+  itemDescription: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+  },
+  outfitName: {
+    fontSize: 18,
     fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+  itemsScroll: {
+    flex: 1,
+  },
+  itemsColumn: {
+    paddingBottom: 20,
+  },
+  outfitSummaryContainer: {
+    marginTop: 20,
+    padding: 15,
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 8,
+  },
+  outfitSummaryTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 8,
   },
   outfitReasoning: {
-    fontSize: 16,
+    fontSize: 14,
     color: Colors.textSecondary,
-    textAlign: 'center',
-    fontStyle: 'italic',
-    marginTop: 15,
+    lineHeight: 20,
   },
-  overlayLabel: {
-    fontSize: 45,
-    fontWeight: 'bold',
-    color: 'white',
-    borderWidth: 2,
-    borderRadius: 10,
-    padding: 10,
-  },
-  overlayWrapperLeft: {
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    justifyContent: 'flex-start',
-    marginTop: 30,
-    marginLeft: -30,
-    borderColor: 'red',
-  },
-  overlayWrapperRight: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-    marginTop: 30,
-    marginLeft: 30,
-    borderColor: 'green',
-  },
-  overlayWrapperTop: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderColor: 'blue',
-  },
-  bottomControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-evenly',
-    alignItems: 'center',
-    paddingVertical: 20,
-    position: 'absolute',
-    bottom: 20,
-    left: 0,
-    right: 0,
-  },
-  controlButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-  },
-  button: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 25,
-    marginTop: 20,
-  },
-  buttonText: {
-    color: Colors.text,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-  },
-  backButton: {
-    padding: 5,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: Colors.text,
-    marginLeft: 10,
-  },
-  headerSpacer: {
-    flex: 1,
-  },
-  emptyContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-}); 
+  cardFooterRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginTop: 20, },
+});
+
+export default OutfitSwiperScreen; 

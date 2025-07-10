@@ -227,30 +227,6 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Forecast Section */}
-        {weather?.forecast && (
-          <View style={styles.forecastCard}>
-            <Text style={styles.sectionTitle}>5-Day Forecast</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {weather.forecast.map((day, index) => (
-                <View key={index} style={styles.forecastDay}>
-                  <Text style={styles.forecastDate}>
-                    {new Date(day.date).toLocaleDateString(undefined, { weekday: 'short' })}
-                  </Text>
-                  <Image
-                    source={{ uri: day.icon }}
-                    style={styles.forecastIcon}
-                  />
-                  <Text style={styles.forecastTemp}>
-                    {day.temperature.max}° / {day.temperature.min}°
-                  </Text>
-                  <Text style={styles.forecastCondition}>{day.condition}</Text>
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
         {/* Main Action Button */}
         <TouchableOpacity
           style={styles.mainActionButton}
@@ -455,36 +431,6 @@ const styles = StyleSheet.create({
   recommendationText: {
     marginLeft: 8,
     color: Colors.text,
-  },
-  forecastCard: {
-    backgroundColor: Colors.backgroundCard,
-    borderRadius: 12,
-    padding: 16,
-  },
-  forecastDay: {
-    alignItems: 'center',
-    marginRight: 24,
-    minWidth: 80,
-  },
-  forecastDate: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  forecastIcon: {
-    width: 40,
-    height: 40,
-    marginBottom: 8,
-  },
-  forecastTemp: {
-    fontSize: 14,
-    color: Colors.text,
-    marginBottom: 4,
-  },
-  forecastCondition: {
-    fontSize: 12,
-    color: Colors.textSecondary,
   },
   mainActionButton: {
     backgroundColor: Colors.primary,

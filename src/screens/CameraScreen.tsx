@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera, CameraType } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
@@ -24,42 +23,38 @@ type CameraScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 
 
 export default function CameraScreen() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [type, setType] = useState(CameraType.back);
   const [capturedImage, setCapturedImage] = useState<CameraPhoto | null>(null);
-  const [isCameraReady, setIsCameraReady] = useState(false);
-  const cameraRef = useRef<Camera>(null);
   const navigation = useNavigation<CameraScreenNavigationProp>();
 
   useEffect(() => {
     (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
   }, []);
 
-  const onCameraReady = () => {
-    setIsCameraReady(true);
-  };
-
   const takePicture = async () => {
-    if (cameraRef.current && isCameraReady) {
-      try {
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.8,
-          base64: true,
-        });
-        
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
         const cameraPhoto: CameraPhoto = {
-          uri: photo.uri,
-          width: photo.width,
-          height: photo.height,
-          base64: photo.base64,
+          uri: asset.uri,
+          width: asset.width,
+          height: asset.height,
+          base64: asset.base64 || undefined,
         };
-        
         setCapturedImage(cameraPhoto);
-      } catch (error) {
-        Alert.alert('Error', 'Failed to take picture');
       }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to take picture');
     }
   };
 
@@ -89,9 +84,8 @@ export default function CameraScreen() {
   };
 
   const handleCapture = async () => {
-    if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true });
-      navigation.navigate('Wardrobe', { capturedImageUri: photo.uri });
+    if (capturedImage) {
+      (navigation as any).navigate('Wardrobe', { capturedImageUri: capturedImage.uri });
     }
   };
 
@@ -150,9 +144,6 @@ export default function CameraScreen() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.button} onPress={handleCapture}>
-            <Ionicons name="camera" size={40} color="white" />
-          </TouchableOpacity>
           <TouchableOpacity style={styles.button} onPress={handleCancel}>
             <Ionicons name="close" size={40} color="white" />
           </TouchableOpacity>
@@ -160,36 +151,25 @@ export default function CameraScreen() {
         <Text style={styles.headerTitle}>Take Photo</Text>
       </View>
       
-      <Camera
-        ref={cameraRef}
-        style={styles.camera}
-        type={type}
-        onCameraReady={onCameraReady}
-      >
-        <View style={styles.cameraOverlay}>
-          <View style={styles.topControls}>
-            <TouchableOpacity
-              style={styles.flipButton}
-              onPress={() => setType(type === CameraType.back ? CameraType.front : CameraType.back)}
-            >
-              <Ionicons name="camera-reverse" size={24} color={Colors.text} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.galleryButton} onPress={pickImage}>
-              <Ionicons name="images" size={24} color={Colors.text} />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.bottomControls}>
-            <TouchableOpacity
-              style={[styles.captureButton, !isCameraReady && styles.captureButtonDisabled]}
-              onPress={takePicture}
-              disabled={!isCameraReady}
-            >
-              <View style={styles.captureButtonInner} />
-            </TouchableOpacity>
-          </View>
+      <View style={styles.cameraContainer}>
+        <View style={styles.cameraPlaceholder}>
+          <Ionicons name="camera" size={120} color={Colors.textSecondary} />
+          <Text style={styles.cameraPlaceholderText}>Camera</Text>
+          <Text style={styles.cameraPlaceholderSubtext}>Tap the button below to take a photo</Text>
         </View>
-      </Camera>
+        
+        <View style={styles.cameraControls}>
+          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+            <Ionicons name="camera" size={40} color={Colors.text} />
+            <Text style={styles.captureButtonText}>Take Photo</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.galleryButton} onPress={pickImage}>
+            <Ionicons name="images" size={24} color={Colors.text} />
+            <Text style={styles.galleryButtonText}>Choose from Gallery</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -235,60 +215,62 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 20,
   },
-  camera: {
+  cameraContainer: {
     flex: 1,
-  },
-  cameraOverlay: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  topControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingVertical: 20,
   },
-  flipButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.backgroundCard,
-    justifyContent: 'center',
+  cameraPlaceholder: {
     alignItems: 'center',
+    marginBottom: 30,
   },
-  galleryButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.backgroundCard,
-    justifyContent: 'center',
-    alignItems: 'center',
+  cameraPlaceholderText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: Colors.text,
+    marginTop: 10,
   },
-  bottomControls: {
-    position: 'absolute',
-    bottom: 40,
-    left: 0,
-    right: 0,
+  cameraPlaceholderSubtext: {
+    fontSize: 16,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 5,
+  },
+  cameraControls: {
+    width: '100%',
     alignItems: 'center',
   },
   captureButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: '100%',
+    height: 120,
+    borderRadius: 60,
     backgroundColor: Colors.backgroundCard,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 4,
-    borderColor: Colors.text,
+    marginBottom: 20,
   },
-  captureButtonDisabled: {
-    opacity: 0.5,
+  captureButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.text,
+    marginTop: 10,
   },
-  captureButtonInner: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.text,
+  galleryButton: {
+    width: '100%',
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: Colors.backgroundCard,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  galleryButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.text,
+    marginTop: 10,
   },
   previewContainer: {
     flex: 1,

@@ -491,8 +491,8 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
           <View key={category} style={styles.categorySection}>
             {renderSectionHeader(category)}
             <View style={styles.categoryGrid}>
-              {categoryItems.map(item => (
-                <View key={item.id} style={styles.itemWrapper}>
+              {categoryItems.map((item, idx) => (
+                <View key={item.id || `item-${category}-${idx}`} style={styles.itemWrapper}>
                   {renderItem({ item })}
                 </View>
               ))}
@@ -564,7 +564,11 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
       {/* Category tabs directly below header */}
       <View style={styles.categoryTabsWrapper}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsContainer}>
-          {CATEGORIES.map((cat) => renderCategoryTab({ item: cat }))}
+          {CATEGORIES.map((cat) => (
+            <View key={cat.key}>
+              {renderCategoryTab({ item: cat })}
+            </View>
+          ))}
         </ScrollView>
       </View>
 

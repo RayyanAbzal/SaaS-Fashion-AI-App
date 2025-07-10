@@ -96,30 +96,6 @@ const OCCASION_CONFIGS: OccasionConfig[] = [
   }
 ];
 
-// Retailer configurations
-const RETAILER_CONFIGS: RetailerConfig[] = [
-  {
-    id: 'countryroad',
-    name: 'Country Road',
-    url: 'https://www.countryroad.co.nz/man-clothing/',
-    enabled: true,
-    categories: ['tops', 'bottoms', 'outerwear', 'accessories'],
-    priceRange: 'premium',
-    country: 'New Zealand',
-    logo: 'https://via.placeholder.com/100x50/FFFFFF/000000?text=Country+Road'
-  },
-  {
-    id: 'glassons',
-    name: 'Glassons',
-    url: 'https://www.glassons.com/c/clothing',
-    enabled: true,
-    categories: ['tops', 'bottoms', 'outerwear', 'accessories'],
-    priceRange: 'mid-range',
-    country: 'New Zealand',
-    logo: 'https://via.placeholder.com/100x50/FFFFFF/000000?text=Glassons'
-  }
-];
-
 class OutfitGenerationService {
   /**
    * Generate outfits based on selected items and preferences
@@ -133,7 +109,6 @@ class OutfitGenerationService {
 
       // Get user's wardrobe and shopping items
       const userWardrobe = await getWardrobeItems();
-      const shoppingItems = await ShoppingService.getShoppingFeed();
       
       // Get current weather if requested
       let weather = request.weather;
@@ -157,7 +132,6 @@ class OutfitGenerationService {
       const outfits = await this.createOutfitSuggestions(
         request.selectedItems,
         userWardrobe,
-        shoppingItems,
         request,
         weather
       );
@@ -240,7 +214,6 @@ class OutfitGenerationService {
   private static async createOutfitSuggestions(
     selectedItems: WardrobeItem[],
     userWardrobe: WardrobeItem[],
-    shoppingItems: ShoppingItem[],
     request: OutfitCreationRequest,
     weather?: WeatherData
   ): Promise<OutfitSuggestion[]> {
@@ -252,14 +225,12 @@ class OutfitGenerationService {
     
     // Filter available items based on preferences
     const availableWardrobeItems = this.filterWardrobeItems(userWardrobe, request);
-    const availableShoppingItems = this.filterShoppingItems(shoppingItems, request);
     
     // Create different outfit combinations
     for (let i = 0; i < maxOutfits; i++) {
       const outfit = await this.createSingleOutfit(
         selectedItems,
         availableWardrobeItems,
-        availableShoppingItems,
         request,
         occasionConfig,
         weather,
@@ -280,7 +251,6 @@ class OutfitGenerationService {
   private static async createSingleOutfit(
     selectedItems: WardrobeItem[],
     availableWardrobeItems: WardrobeItem[],
-    availableShoppingItems: ShoppingItem[],
     request: OutfitCreationRequest,
     occasionConfig: OccasionConfig | undefined,
     weather?: WeatherData,
@@ -300,19 +270,6 @@ class OutfitGenerationService {
           category,
           outfit,
           occasionConfig,
-          weather,
-          request.stylePreferences
-        );
-      }
-
-      // If no wardrobe item found and shopping is enabled, try shopping items
-      if (!item && request.retailerPreferences?.enabled) {
-        item = this.findBestShoppingItem(
-          availableShoppingItems,
-          category,
-          outfit,
-          occasionConfig,
-          request.retailerPreferences.retailers,
           weather,
           request.stylePreferences
         );
@@ -397,42 +354,6 @@ class OutfitGenerationService {
     stylePreferences?: string[]
   ): WardrobeItem | null {
     const categoryItems = availableItems.filter(item => item.category === category);
-    
-    if (categoryItems.length === 0) return null;
-    
-    // Score items based on compatibility
-    const scoredItems = categoryItems.map(item => ({
-      item,
-      score: this.calculateItemCompatibilityScore(item, currentOutfit, occasionConfig, weather, stylePreferences)
-    }));
-    
-    // Return the highest scoring item
-    scoredItems.sort((a, b) => b.score - a.score);
-    return scoredItems[0]?.item || null;
-  }
-
-  /**
-   * Find the best shopping item for a category
-   */
-  private static findBestShoppingItem(
-    availableItems: ShoppingItem[],
-    category: Category,
-    currentOutfit: (WardrobeItem | ShoppingItem)[],
-    occasionConfig?: OccasionConfig,
-    preferredRetailers?: string[],
-    weather?: WeatherData,
-    stylePreferences?: string[]
-  ): ShoppingItem | null {
-    let categoryItems = availableItems.filter(item => item.category === category);
-    
-    // Filter by preferred retailers if specified
-    if (preferredRetailers && preferredRetailers.length > 0) {
-      categoryItems = categoryItems.filter(item => 
-        preferredRetailers.some(retailer => 
-          item.brand.toLowerCase().includes(retailer.toLowerCase())
-        )
-      );
-    }
     
     if (categoryItems.length === 0) return null;
     
@@ -957,43 +878,10 @@ class OutfitGenerationService {
   }
 
   /**
-   * Filter shopping items based on preferences
-   */
-  private static filterShoppingItems(shopping: ShoppingItem[], request: OutfitCreationRequest): ShoppingItem[] {
-    return shopping.filter(item => {
-      // Filter by budget if specified
-      if (request.budget) {
-        if (item.price < request.budget.min || item.price > request.budget.max) {
-          return false;
-        }
-      }
-      
-      // Filter by retailer preferences if specified
-      if (request.retailerPreferences?.enabled && request.retailerPreferences.retailers.length > 0) {
-        const matchesRetailer = request.retailerPreferences.retailers.some(retailer => 
-          item.brand.toLowerCase().includes(retailer.toLowerCase())
-        );
-        if (!matchesRetailer) {
-          return false;
-        }
-      }
-      
-      return true;
-    });
-  }
-
-  /**
    * Get available occasions
    */
   static getAvailableOccasions(): OccasionConfig[] {
     return OCCASION_CONFIGS;
-  }
-
-  /**
-   * Get available retailers
-   */
-  static getAvailableRetailers(): RetailerConfig[] {
-    return RETAILER_CONFIGS;
   }
 }
 

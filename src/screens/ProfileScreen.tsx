@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '../constants/colors';
 import { AuthService } from '../services/authService';
+import { FirestoreService } from '../services/firestoreService';
 import { User, Achievement, MainTabParamList } from '../types';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -25,6 +26,22 @@ const { width } = Dimensions.get('window');
 export default function ProfileScreen() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [preferenceStats, setPreferenceStats] = useState<{
+    totalInteractions: number;
+    likes: number;
+    dislikes: number;
+    favoriteCategories: string[];
+    favoriteColors: string[];
+    favoriteBrands: string[];
+  } | null>(null);
+  const [debugMode, setDebugMode] = useState(false);
+  const [learningProgress, setLearningProgress] = useState<{
+    totalInteractions: number;
+    categoryScores: Record<string, number>;
+    colorScores: Record<string, number>;
+    brandScores: Record<string, number>;
+    recentInteractions: Array<{action: string, items: string[], timestamp: Date}>;
+  } | null>(null);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { signOut } = useUser();
 
@@ -47,6 +64,15 @@ export default function ProfileScreen() {
       setIsLoading(true);
       const currentUser = await AuthService.getCurrentUser();
       setUser(currentUser);
+      
+      // Load preference statistics if user exists
+      if (currentUser?.id) {
+        const stats = await FirestoreService.getUserPreferenceStats(currentUser.id);
+        setPreferenceStats(stats);
+        
+        // Load detailed learning progress for debug mode
+        await loadLearningProgress(currentUser.id);
+      }
     } catch (error) {
       console.error('Error loading user data:', error);
       Alert.alert('Error', 'Failed to load profile');
@@ -69,6 +95,85 @@ export default function ProfileScreen() {
 
   const handleAchievements = () => {
     navigation.navigate('Achievements');
+  };
+
+  const loadLearningProgress = async (userId: string) => {
+    try {
+      const preferences = await FirestoreService.loadUserPreferences(userId);
+      
+      // Calculate category scores
+      const categoryScores: Record<string, { likes: number; total: number }> = {};
+      const colorScores: Record<string, { likes: number; total: number }> = {};
+      const brandScores: Record<string, { likes: number; total: number }> = {};
+      
+      preferences.forEach(pref => {
+        // Category scores
+        if (!categoryScores[pref.category]) {
+          categoryScores[pref.category] = { likes: 0, total: 0 };
+        }
+        categoryScores[pref.category].total++;
+        if (pref.preference === 'like') {
+          categoryScores[pref.category].likes++;
+        }
+        
+        // Color scores
+        if (!colorScores[pref.color]) {
+          colorScores[pref.color] = { likes: 0, total: 0 };
+        }
+        colorScores[pref.color].total++;
+        if (pref.preference === 'like') {
+          colorScores[pref.color].likes++;
+        }
+        
+        // Brand scores
+        if (!brandScores[pref.brand]) {
+          brandScores[pref.brand] = { likes: 0, total: 0 };
+        }
+        brandScores[pref.brand].total++;
+        if (pref.preference === 'like') {
+          brandScores[pref.brand].likes++;
+        }
+      });
+      
+      // Convert to percentages
+      const categoryPercentages: Record<string, number> = {};
+      Object.keys(categoryScores).forEach(category => {
+        const score = categoryScores[category];
+        categoryPercentages[category] = score.total > 0 ? (score.likes / score.total) * 100 : 0;
+      });
+      
+      const colorPercentages: Record<string, number> = {};
+      Object.keys(colorScores).forEach(color => {
+        const score = colorScores[color];
+        colorPercentages[color] = score.total > 0 ? (score.likes / score.total) * 100 : 0;
+      });
+      
+      const brandPercentages: Record<string, number> = {};
+      Object.keys(brandScores).forEach(brand => {
+        const score = brandScores[brand];
+        brandPercentages[brand] = score.total > 0 ? (score.likes / score.total) * 100 : 0;
+      });
+      
+      // Get recent interactions
+      const recentInteractions = preferences
+        .slice(0, 10)
+        .map(pref => ({
+          action: pref.preference,
+          items: [pref.category, pref.color, pref.brand],
+          timestamp: pref.timestamp
+        }));
+      
+      setLearningProgress({
+        totalInteractions: preferences.length,
+        categoryScores: categoryPercentages,
+        colorScores: colorPercentages,
+        brandScores: brandPercentages,
+        recentInteractions
+      });
+      
+    } catch (error) {
+      console.error('Error loading learning progress:', error);
+    }
   };
 
   const mockAchievements: Achievement[] = [
@@ -200,7 +305,7 @@ export default function ProfileScreen() {
             
             <View style={styles.statCard}>
               <Ionicons name="heart" size={24} color={Colors.text} />
-              <Text style={styles.statNumber}>156</Text>
+              <Text style={styles.statNumber}>{preferenceStats?.likes || 0}</Text>
               <Text style={styles.statLabel}>Likes</Text>
             </View>
             
@@ -218,10 +323,126 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {preferenceStats && preferenceStats.totalInteractions > 0 && (
+          <View style={styles.preferencesSection}>
+            <Text style={styles.sectionTitle}>AI Learning Insights</Text>
+            <View style={styles.preferencesCard}>
+              <Text style={styles.preferencesSubtitle}>Based on your likes and dislikes:</Text>
+              
+              {preferenceStats.favoriteCategories.length > 0 && (
+                <View style={styles.preferenceItem}>
+                  <Text style={styles.preferenceLabel}>Favorite Categories:</Text>
+                  <View style={styles.tagContainer}>
+                    {preferenceStats.favoriteCategories.map((category, index) => (
+                      <View key={index} style={styles.tag}>
+                        <Text style={styles.tagText}>{category}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+              
+              {preferenceStats.favoriteColors.length > 0 && (
+                <View style={styles.preferenceItem}>
+                  <Text style={styles.preferenceLabel}>Favorite Colors:</Text>
+                  <View style={styles.tagContainer}>
+                    {preferenceStats.favoriteColors.map((color, index) => (
+                      <View key={index} style={styles.tag}>
+                        <Text style={styles.tagText}>{color}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+              
+              {preferenceStats.favoriteBrands.length > 0 && (
+                <View style={styles.preferenceItem}>
+                  <Text style={styles.preferenceLabel}>Favorite Brands:</Text>
+                  <View style={styles.tagContainer}>
+                    {preferenceStats.favoriteBrands.map((brand, index) => (
+                      <View key={index} style={styles.tag}>
+                        <Text style={styles.tagText}>{brand}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+              
+              <View style={styles.preferenceStats}>
+                <Text style={styles.preferenceStatsText}>
+                  Total interactions: {preferenceStats.totalInteractions} • 
+                  Likes: {preferenceStats.likes} • 
+                  Dislikes: {preferenceStats.dislikes}
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
+
         <View style={styles.achievementsSection}>
           <Text style={styles.sectionTitle}>Recent Achievements</Text>
           {mockAchievements.map(renderAchievement)}
         </View>
+
+        {debugMode && learningProgress && (
+          <View style={styles.debugSection}>
+            <Text style={styles.sectionTitle}>🧠 AI Learning Debug</Text>
+            <View style={styles.debugCard}>
+              <Text style={styles.debugSubtitle}>Total Interactions: {learningProgress.totalInteractions}</Text>
+              
+              {Object.keys(learningProgress.categoryScores).length > 0 && (
+                <View style={styles.debugItem}>
+                  <Text style={styles.debugLabel}>Category Preferences:</Text>
+                  {Object.entries(learningProgress.categoryScores)
+                    .sort(([,a], [,b]) => b - a)
+                    .map(([category, score]) => (
+                      <Text key={category} style={styles.debugScore}>
+                        {category}: {score.toFixed(1)}% liked
+                      </Text>
+                    ))}
+                </View>
+              )}
+              
+              {Object.keys(learningProgress.colorScores).length > 0 && (
+                <View style={styles.debugItem}>
+                  <Text style={styles.debugLabel}>Color Preferences:</Text>
+                  {Object.entries(learningProgress.colorScores)
+                    .sort(([,a], [,b]) => b - a)
+                    .slice(0, 5)
+                    .map(([color, score]) => (
+                      <Text key={color} style={styles.debugScore}>
+                        {color}: {score.toFixed(1)}% liked
+                      </Text>
+                    ))}
+                </View>
+              )}
+              
+              {Object.keys(learningProgress.brandScores).length > 0 && (
+                <View style={styles.debugItem}>
+                  <Text style={styles.debugLabel}>Brand Preferences:</Text>
+                  {Object.entries(learningProgress.brandScores)
+                    .sort(([,a], [,b]) => b - a)
+                    .slice(0, 5)
+                    .map(([brand, score]) => (
+                      <Text key={brand} style={styles.debugScore}>
+                        {brand}: {score.toFixed(1)}% liked
+                      </Text>
+                    ))}
+                </View>
+              )}
+              
+              <View style={styles.debugItem}>
+                <Text style={styles.debugLabel}>Recent Interactions:</Text>
+                {learningProgress.recentInteractions.map((interaction, index) => (
+                  <Text key={index} style={styles.debugInteraction}>
+                    {interaction.action.toUpperCase()}: {interaction.items.join(', ')} 
+                    ({interaction.timestamp.toLocaleDateString()})
+                  </Text>
+                ))}
+              </View>
+            </View>
+          </View>
+        )}
 
         <View style={styles.actionsSection}>
           <Text style={styles.sectionTitle}>Settings</Text>
@@ -234,6 +455,15 @@ export default function ProfileScreen() {
           <TouchableOpacity style={styles.actionButton} onPress={handleAchievements}>
             <Ionicons name="trophy" size={20} color={Colors.text} />
             <Text style={styles.actionText}>Achievements</Text>
+            <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={() => setDebugMode(!debugMode)}
+          >
+            <Ionicons name="bug" size={20} color={Colors.text} />
+            <Text style={styles.actionText}>AI Learning Debug</Text>
             <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
 
@@ -463,5 +693,92 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  // Preference learning styles
+  preferencesSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  preferencesCard: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 15,
+    padding: 20,
+  },
+  preferencesSubtitle: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 15,
+  },
+  preferenceItem: {
+    marginBottom: 15,
+  },
+  preferenceLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  tagContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  tag: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  tagText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  preferenceStats: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  preferenceStatsText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  // Debug styles
+  debugSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  debugCard: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 15,
+    padding: 20,
+  },
+  debugSubtitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 15,
+  },
+  debugItem: {
+    marginBottom: 15,
+  },
+  debugLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  debugScore: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 2,
+  },
+  debugInteraction: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    marginBottom: 2,
+    fontStyle: 'italic',
   },
 }); 

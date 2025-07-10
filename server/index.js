@@ -9,7 +9,7 @@ const vision = require('@google-cloud/vision');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
-const { Configuration, OpenAIApi } = require('openai');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,11 +26,13 @@ const PORT = process.env.PORT || 3000;
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.applicationDefault(),
-    databaseURL: "https://your-project-id.firebaseio.com"
+    databaseURL: "https://stylematev2.firebaseio.com"
   });
 }
 
 const db = admin.firestore();
+
+// Use shopping_products as the single source of truth for all scraped products
 const shoppingCollection = db.collection('shopping_products');
 
 // Enable CORS
@@ -63,28 +65,33 @@ function cleanPrice(priceStr) {
   }
 }
 
-// Helper function to classify category
-function classifyCategory(name, url) {
-  const nameLower = name.toLowerCase();
-  const urlLower = url.toLowerCase();
-  
-  if (nameLower.includes('shirt') || nameLower.includes('top') || nameLower.includes('t-shirt') || urlLower.includes('tops')) {
-    return 'tops';
+// Add at the top, after imports
+const CATEGORY_KEYWORDS = {
+  tops: ['shirt', 't-shirt', 'tee', 'polo', 'knit', 'sweat', 'jumper', 'crew', 'henley', 'singlet', 'tank', 'top'],
+  bottoms: ['pant', 'pants', 'jean', 'short', 'trouser', 'chino', 'track', 'jogger', 'suit'],
+  shoes: ['shoe', 'sneaker', 'boot', 'loafer', 'slide', 'thong'],
+  outerwear: ['jacket', 'coat', 'blazer', 'overshirt', 'duffle'],
+  accessories: ['belt', 'bag', 'duffle', 'wallet', 'tie', 'sock', 'scarf', 'hat']
+};
+
+function classifyCategory(name, url, description = '') {
+  const text = `${name} ${description} ${url}`.toLowerCase();
+  // Priority order: tops before bottoms to avoid 'short' in 'Short Sleeve Shirt'
+  const CATEGORY_REGEX = [
+    { category: 'tops', regex: /\b(shirt|t-shirt|tee|polo|knit|sweat|jumper|crew|henley|singlet|tank|top)\b/ },
+    { category: 'bottoms', regex: /\b(jogger pant|track pant|chino|trouser|pant|pants|jean|short|shorts|suit)\b/ }, // match both 'short' and 'shorts'
+    { category: 'outerwear', regex: /\b(jacket|coat|blazer|overshirt|duffle)\b/ },
+    { category: 'shoes', regex: /\b(shoe|sneaker|boot|loafer|slide|thong)\b/ },
+    { category: 'accessories', regex: /\b(belt|bag|wallet|tie|sock|scarf|hat)\b/ },
+  ];
+  for (const { category, regex } of CATEGORY_REGEX) {
+    if (regex.test(text)) {
+      return category;
+    }
   }
-  if (nameLower.includes('pant') || nameLower.includes('jean') || nameLower.includes('short') || urlLower.includes('bottoms')) {
-    return 'bottoms';
-  }
-  if (nameLower.includes('shoe') || nameLower.includes('sneaker') || nameLower.includes('boot') || urlLower.includes('shoes')) {
-    return 'shoes';
-  }
-  if (nameLower.includes('jacket') || nameLower.includes('coat') || nameLower.includes('blazer') || urlLower.includes('outerwear')) {
-    return 'outerwear';
-  }
-  if (nameLower.includes('hat') || nameLower.includes('bag') || nameLower.includes('accessory') || urlLower.includes('accessories')) {
-    return 'accessories';
-  }
-  
-  return 'tops'; // default
+  // Log unknowns for review
+  console.warn(`[CategoryClassifier] Unknown category for product:`, { name, url, description });
+  return 'unknown';
 }
 
 // Helper function to extract color from name
@@ -113,6 +120,33 @@ async function remoteImageToBase64(url) {
     throw error;
   }
 }
+
+// Hybrid color extraction utility (no OpenAI Vision)
+function getProductColor({ name, productUrl }) {
+  let color = extractColorFromUrl(productUrl) || extractColor(name);
+  if (!color || color === 'unknown' || color === 'neutral' || color === '') {
+    color = 'unknown';
+  }
+  return color;
+}
+
+// Add at the top, after imports
+const COUNTRY_ROAD_SUBCATEGORY_URLS = [
+  'https://www.countryroad.co.nz/man-clothing-chinos/',
+  'https://www.countryroad.co.nz/man-clothing-pants/',
+  'https://www.countryroad.co.nz/man-clothing-denim-jeans/',
+  'https://www.countryroad.co.nz/man-clothing-shorts/',
+  'https://www.countryroad.co.nz/man-clothing-suits-tailoring/',
+  'https://www.countryroad.co.nz/man-clothing-knitwear/',
+  'https://www.countryroad.co.nz/man-clothing-t-shirts/',
+  'https://www.countryroad.co.nz/man-clothing-polos/',
+  'https://www.countryroad.co.nz/man-clothing-casual-shirts/',
+  'https://www.countryroad.co.nz/man-clothing-business-shirts/',
+  'https://www.countryroad.co.nz/man-clothing-jackets-coats/',
+  'https://www.countryroad.co.nz/man-clothing-blazers/',
+  'https://www.countryroad.co.nz/man-clothing-sweats/',
+  'https://www.countryroad.co.nz/man-clothing-swimwear/',
+];
 
 // Scraping function for Glassons with pagination
 async function scrapeGlassons() {
@@ -159,7 +193,9 @@ async function scrapeGlassons() {
           console.log(`Selector "${selector}" found ${elements.length} elements on page ${page}`);
           
           if (elements.length > 0) {
-            elements.each((index, element) => {
+            const elementArray = elements.toArray();
+            for (let idx = 0; idx < elementArray.length; idx++) {
+              const element = elementArray[idx];
               try {
                 const $el = $(element);
                 
@@ -235,8 +271,8 @@ async function scrapeGlassons() {
                   }
                 }
                 
-                // Extract color from URL or name
-                const color = extractColorFromUrl(productUrl) || extractColor(name);
+                // Hybrid color extraction (no AI)
+                const detectedColor = getProductColor({ name, productUrl: productUrl });
                 
                 // Debug logging
                 if (name || priceText || imageUrl) {
@@ -245,20 +281,20 @@ async function scrapeGlassons() {
                     priceText, 
                     hasImage: !!imageUrl,
                     hasUrl: !!productUrl,
-                    color
+                    color: detectedColor
                   });
                 }
                 
                 if (name && priceText) {
                   const price = cleanPrice(priceText);
-                  const category = classifyCategory(name, productUrl || '');
+                  const category = classifyCategory(name, productUrl || '', '');
                   
                   // Ensure URLs are absolute
                   const fullImageUrl = imageUrl && !imageUrl.startsWith('http') ? `https://www.glassons.com${imageUrl}` : imageUrl;
                   const fullProductUrl = productUrl && !productUrl.startsWith('http') ? `https://www.glassons.com${productUrl}` : productUrl;
                   
                   // Create a unique identifier based on name and color to prevent duplicates
-                  const uniqueId = `glassons-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${color}`;
+                  const uniqueId = `glassons-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${detectedColor}`;
                   
                   products.push({
                     id: uniqueId,
@@ -269,7 +305,7 @@ async function scrapeGlassons() {
                     purchaseUrl: fullProductUrl || '#',
                     productUrl: fullProductUrl || '#',
                     category: category,
-                    color: color,
+                    color: detectedColor,
                     description: `${name} from Glassons`,
                     materials: [],
                     tags: ['glassons', category],
@@ -280,7 +316,7 @@ async function scrapeGlassons() {
               } catch (error) {
                 console.warn('Error parsing Glassons product on page ${page}:', error.message);
               }
-            });
+            }
             
             if (products.length > 0) {
               console.log(`Found ${products.length} products with selector "${selector}" on page ${page}`);
@@ -323,148 +359,108 @@ async function scrapeGlassons() {
   }
 }
 
-// Scraping function for Country Road with pagination
+// Scraping function for Country Road with all subcategories and pagination
 async function scrapeCountryRoad() {
   try {
-    console.log('Attempting to scrape Country Road with pagination...');
-    
+    console.log('Attempting to scrape Country Road with all subcategories and pagination...');
     const allProducts = [];
-    let page = 1;
-    let hasMorePages = true;
-    const maxPages = 10; // Safety limit to prevent infinite loops
-    
-    while (hasMorePages && page <= maxPages) {
-      const url = page === 1 
-        ? 'https://www.countryroad.co.nz/man-clothing/'
-        : `https://www.countryroad.co.nz/man-clothing/?src=fh&page=${page}`;
-      
-      console.log(`Scraping Country Road page ${page}: ${url}`);
-      
-      try {
-        const response = await axios.get(url, {
-          headers: HEADERS,
-          timeout: 20000
-        });
-        
-        const $ = cheerio.load(response.data);
-        const products = [];
-        
-        // Use the actual selectors from Country Road's HTML structure
-        const productSelectors = [
-          'section[data-type="ProductCard"]',
-          '[data-type="ProductCard"]',
-          '.product-card',
-          '.product-item'
-        ];
-        
-        console.log(`Trying selectors for Country Road page ${page}...`);
-        
-        for (const selector of productSelectors) {
-          const elements = $(selector);
-          console.log(`Selector "${selector}" found ${elements.length} elements on page ${page}`);
-          
-          if (elements.length > 0) {
-            elements.each((index, element) => {
-              try {
-                const $el = $(element);
-                
-                // Extract product name using the actual HTML structure
-                const nameElement = $el.find('h2 a[title]').first();
-                const name = nameElement.attr('title') || nameElement.text().trim();
-                
-                // Extract price using the actual HTML structure
-                const priceElement = $el.find('.price-display .value').first();
-                const priceText = priceElement.text().trim();
-                
-                // Extract image URL using the actual HTML structure
-                const imageElement = $el.find('img[src]').first();
-                const imageUrl = imageElement.attr('src');
-                
-                // Extract product URL using the actual HTML structure
-                const linkElement = $el.find('h2 a[href]').first();
-                const productUrl = linkElement.attr('href');
-                
-                // Extract color from the product URL or name
-                const color = extractColorFromUrl(productUrl) || extractColor(name);
-                
-                // Debug logging
-                if (name || priceText || imageUrl) {
-                  console.log(`Found potential product on page ${page}:`, { 
-                    name: name ? name.substring(0, 50) : 'No name', 
-                    priceText, 
-                    hasImage: !!imageUrl,
-                    hasUrl: !!productUrl,
-                    color
-                  });
+    for (const subcatUrl of COUNTRY_ROAD_SUBCATEGORY_URLS) {
+      console.log(`=== Scraping subcategory: ${subcatUrl} ===`);
+      for (let page = 1; page <= 7; page++) {
+        const url = page === 1 ? subcatUrl : `${subcatUrl}?src=i&page=${page}`;
+        console.log(`Scraping Country Road page ${page}: ${url}`);
+        try {
+          const response = await axios.get(url, {
+            headers: HEADERS,
+            timeout: 20000
+          });
+          const $ = cheerio.load(response.data);
+          const products = [];
+          const productSelectors = [
+            'section[data-type="ProductCard"]',
+            '[data-type="ProductCard"]',
+            '.product-card',
+            '.product-item'
+          ];
+          let foundAny = false;
+          for (const selector of productSelectors) {
+            const elements = $(selector);
+            if (elements.length > 0) {
+              foundAny = true;
+              const elementArray = elements.toArray();
+              for (let idx = 0; idx < elementArray.length; idx++) {
+                const element = elementArray[idx];
+                try {
+                  const $el = $(element);
+                  const nameElement = $el.find('h2 a[title]').first();
+                  const name = nameElement.attr('title') || nameElement.text().trim();
+                  const priceElement = $el.find('.price-display .value').first();
+                  const priceText = priceElement.text().trim();
+                  const imageElement = $el.find('img[src]').first();
+                  let imageUrl = imageElement.attr('src');
+                  if (imageUrl && !imageUrl.startsWith('http')) imageUrl = 'https://www.countryroad.co.nz' + imageUrl;
+                  const linkElement = $el.find('h2 a[href]').first();
+                  let productUrl = linkElement.attr('href');
+                  if (productUrl && !productUrl.startsWith('http')) productUrl = 'https://www.countryroad.co.nz' + productUrl;
+                  const color = getProductColor({ name, productUrl });
+                  if (name && priceText && imageUrl && productUrl) {
+                    const price = cleanPrice(priceText);
+                    const category = classifyCategory(name, productUrl || '', '');
+                    const uniqueId = crypto.createHash('md5').update(productUrl).digest('hex');
+                    products.push({
+                      id: uniqueId,
+                      name: name,
+                      brand: 'Country Road',
+                      price: price,
+                      imageUrl: imageUrl,
+                      purchaseUrl: productUrl,
+                      productUrl: productUrl,
+                      category: category,
+                      color: color,
+                      description: `${name} from Country Road`,
+                      materials: [],
+                      tags: ['country-road', category],
+                      retailer: { id: 'countryroad', name: 'Country Road' },
+                      scrapedAt: new Date().toISOString()
+                    });
+                    console.log(`Country Road product: ${name} | ID: ${uniqueId} | URL: ${productUrl}`);
+                  }
+                } catch (error) {
+                  console.warn('Error parsing Country Road product:', error.message);
                 }
-                
-                if (name && priceText) {
-                  const price = cleanPrice(priceText);
-                  const category = classifyCategory(name, productUrl || '');
-                  
-                  // Ensure URLs are absolute
-                  const fullImageUrl = imageUrl && !imageUrl.startsWith('http') ? `https://www.countryroad.co.nz${imageUrl}` : imageUrl;
-                  const fullProductUrl = productUrl && !productUrl.startsWith('http') ? `https://www.countryroad.co.nz${productUrl}` : productUrl;
-                  
-                  // Create a unique identifier based on name and color to prevent duplicates
-                  const uniqueId = `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${color}`;
-                  
-                  products.push({
-                    id: uniqueId,
-                    name: name,
-                    brand: 'Country Road',
-                    price: price,
-                    imageUrl: fullImageUrl || 'https://via.placeholder.com/300x400/CCCCCC/666666?text=Country+Road+Product',
-                    purchaseUrl: fullProductUrl || '#',
-                    productUrl: fullProductUrl || '#',
-                    category: category,
-                    color: color,
-                    description: `${name} from Country Road`,
-                    materials: [],
-                    tags: ['country-road', category],
-                    retailer: { id: 'countryroad', name: 'Country Road' },
-                    scrapedAt: new Date().toISOString()
-                  });
-                }
-              } catch (error) {
-                console.warn('Error parsing product on page ${page}:', error.message);
               }
-            });
-            
-            if (products.length > 0) {
-              console.log(`Found ${products.length} products with selector "${selector}" on page ${page}`);
-              break; // Found products with this selector
+              if (products.length > 0) {
+                console.log(`Found ${products.length} products with selector "${selector}" on page ${page}`);
+                break; // Use first selector that finds products
+              }
             }
           }
-        }
-        
-        // Add products from this page to the total
-        allProducts.push(...products);
-        
-        // Check if there are more pages by looking for pagination elements
-        const nextPageElement = $('a[href*="page=' + (page + 1) + '"]');
-        const paginationInfo = $('.pagination-info, .results-count').text();
-        
-        console.log(`Page ${page} pagination info:`, paginationInfo);
-        console.log(`Next page element found:`, nextPageElement.length > 0);
-        
-        // If no products found or no next page link, stop pagination
-        if (products.length === 0 || nextPageElement.length === 0) {
-          hasMorePages = false;
-          console.log(`Stopping pagination at page ${page} - no more products or pages`);
-        } else {
-          page++;
-          // Add a small delay between requests to be respectful
+          if (products.length > 0) {
+            allProducts.push(...products);
+          }
+          if (!foundAny || products.length === 0) {
+            console.log(`No more products or selectors found on page ${page} for ${subcatUrl}`);
+            break;
+          }
           await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.warn(`Failed to scrape Country Road page ${page}:`, error.message);
+          break;
         }
-        
-      } catch (error) {
-        console.warn(`Failed to scrape Country Road page ${page}:`, error.message);
-        hasMorePages = false;
       }
     }
-    
-    console.log(`Scraped ${allProducts.length} total products from Country Road across ${page - 1} pages`);
+    console.log(`Scraped ${allProducts.length} total products from Country Road (all subcategories)`);
+    const idSet = new Set();
+    let duplicateCount = 0;
+    for (const prod of allProducts) {
+      if (idSet.has(prod.id)) {
+        duplicateCount++;
+        console.warn(`Duplicate ID detected: ${prod.id} (${prod.name})`);
+      } else {
+        idSet.add(prod.id);
+      }
+    }
+    console.log(`Total unique products: ${idSet.size}, duplicates: ${duplicateCount}`);
     return allProducts;
   } catch (error) {
     console.error('Error scraping Country Road:', error.message);
@@ -495,35 +491,6 @@ function extractColorFromUrl(url) {
   return 'unknown';
 }
 
-// Shopping feed endpoint - now uses database
-app.get('/api/shopping-feed', async (req, res) => {
-  try {
-    console.log('Shopping feed requested from database');
-    
-    // Get products from database
-    const products = await getProductsFromDatabase(100);
-    
-    console.log(`Returning ${products.length} products from database`);
-    
-    res.json({
-      success: true,
-      products: products,
-      total: products.length,
-      source: 'database',
-      retailers: ['Country Road', 'Glassons']
-    });
-    
-  } catch (error) {
-    console.error('Error in shopping feed:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch shopping feed',
-      products: [],
-      total: 0
-    });
-  }
-});
-
 // New endpoint to trigger scraping and database update
 app.post('/api/scrape-and-save', async (req, res) => {
   try {
@@ -546,8 +513,17 @@ app.post('/api/scrape-and-save', async (req, res) => {
       allProducts = allProducts.concat(countryRoadProducts.value);
     }
     
+    // Deduplicate products by ID
+    const uniqueProductsMap = new Map();
+    for (const product of allProducts) {
+      uniqueProductsMap.set(product.id, product);
+    }
+    const uniqueProducts = Array.from(uniqueProductsMap.values());
+    
+    console.log(`Scraped ${allProducts.length} products, deduplicated to ${uniqueProducts.length} unique products.`);
+    
     // Save to database
-    const dbResult = await saveProductsToDatabase(allProducts);
+    const dbResult = await saveProductsToDatabase(uniqueProducts);
     
     // Clear old products (older than 30 days)
     const deletedCount = await clearOldProducts(30);
@@ -841,50 +817,44 @@ async function saveProductsToDatabase(products) {
   }
 
   console.log(`Saving ${products.length} products to database...`);
-  
-  const batch = db.batch();
+
+  // Firestore batch limit is 50
+  const BATCH_LIMIT = 50;
   let savedCount = 0;
   let skippedCount = 0;
+  let batchNum = 0;
 
-  for (const product of products) {
-    try {
-      // Check if product already exists (based on unique ID)
-      const existingDoc = await shoppingCollection.doc(product.id).get();
-      
-      if (existingDoc.exists) {
-        // Update existing product with new scraped data
-        batch.update(shoppingCollection.doc(product.id), {
-          ...product,
-          updatedAt: new Date().toISOString(),
-          lastScraped: new Date().toISOString()
-        });
-        savedCount++;
-        console.log(`Updated existing product: ${product.name} (${product.color})`);
-      } else {
-        // Add new product
+  for (let i = 0; i < products.length; i += BATCH_LIMIT) {
+    batchNum++;
+    const batchProducts = products.slice(i, i + BATCH_LIMIT);
+    const batch = db.batch();
+    console.log(`[Batch ${batchNum}] Processing ${batchProducts.length} products...`);
+    for (const product of batchProducts) {
+      try {
         batch.set(shoppingCollection.doc(product.id), {
           ...product,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           lastScraped: new Date().toISOString()
-        });
+        }, { merge: true });
         savedCount++;
-        console.log(`Added new product: ${product.name} (${product.color})`);
+        console.log(`[Batch ${batchNum}][SET] ${product.name} | color: ${product.color}`);
+      } catch (error) {
+        console.error(`[Batch ${batchNum}] Error processing product ${product.id}:`, error);
+        skippedCount++;
       }
+    }
+    try {
+      await batch.commit();
+      console.log(`[Batch ${batchNum}] Batch commit successful: ${batchProducts.length} products`);
     } catch (error) {
-      console.error(`Error processing product ${product.id}:`, error);
-      skippedCount++;
+      console.error(`[Batch ${batchNum}] Error committing batch to database:`, error);
+      skippedCount += batchProducts.length;
     }
   }
 
-  try {
-    await batch.commit();
-    console.log(`Database operation completed: ${savedCount} saved, ${skippedCount} skipped`);
-    return { saved: savedCount, skipped: skippedCount };
-  } catch (error) {
-    console.error('Error committing batch to database:', error);
-    return { saved: 0, skipped: products.length };
-  }
+  console.log(`Database operation completed: ${savedCount} saved/updated, ${skippedCount} skipped`);
+  return { saved: savedCount, skipped: skippedCount };
 }
 
 async function getProductsFromDatabase(limit = 100) {
@@ -939,12 +909,10 @@ async function clearOldProducts(daysOld = 30) {
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`Shopping feed available at: http://localhost:${PORT}/api/shopping-feed`);
   console.log(`Health check available at: http://localhost:${PORT}/api/health`);
 });
 
 const upload = multer({ dest: 'uploads/' });
-const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
 
 // Audio transcription endpoint
 app.post('/api/transcribe-audio', upload.single('audio'), async (req, res) => {
@@ -954,17 +922,16 @@ app.post('/api/transcribe-audio', upload.single('audio'), async (req, res) => {
     }
     const audioPath = req.file.path;
     const audioStream = fs.createReadStream(audioPath);
-    const response = await openai.createTranscription(
-      audioStream,
-      'whisper-1',
-      undefined, // prompt
-      'json',
-      0.2, // temperature
-      'en' // language
-    );
+    const response = await openai.audio.transcriptions.create({
+      file: audioStream,
+      model: 'whisper-1',
+      response_format: 'json',
+      temperature: 0.2,
+      language: 'en'
+    });
     fs.unlink(audioPath, () => {}); // Clean up temp file
-    if (response.data && response.data.text) {
-      return res.json({ success: true, transcript: response.data.text });
+    if (response && response.text) {
+      return res.json({ success: true, transcript: response.text });
     } else {
       return res.status(500).json({ success: false, error: 'No transcript returned' });
     }
@@ -972,4 +939,22 @@ app.post('/api/transcribe-audio', upload.single('audio'), async (req, res) => {
     console.error('Transcription error:', error.message);
     return res.status(500).json({ success: false, error: error.message });
   }
-}); 
+});
+
+// Add new endpoint for retailer products
+app.get('/api/retailer-feed', async (req, res) => {
+  try {
+    const { category, color } = req.query;
+    let query = shoppingCollection;
+    if (category) query = query.where('category', '==', category);
+    if (color) query = query.where('color', '==', color);
+    const snapshot = await query.limit(30).get();
+    const products = snapshot.docs.map(doc => doc.data());
+    res.json({ success: true, products });
+  } catch (error) {
+    console.error('Error fetching retailer products:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch retailer products' });
+  }
+});
+
+// NOTE: Run the Python scraper on a schedule (e.g., daily) to keep Firestore up to date with Country Road products. 

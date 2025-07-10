@@ -29,6 +29,31 @@ import {
 } from '../types';
 import { AuthService } from './authService';
 
+// User Preferences for Reinforcement Learning
+export interface UserPreference {
+  userId: string;
+  itemId: string;
+  category: string;
+  color: string;
+  brand: string;
+  tags: string[];
+  preference: 'like' | 'dislike' | 'neutral';
+  confidence: number;
+  timestamp: Date;
+}
+
+export interface PreferenceScore {
+  itemId: string;
+  category: string;
+  color: string;
+  brand: string;
+  tags: string[];
+  likeScore: number;
+  dislikeScore: number;
+  totalInteractions: number;
+  lastUpdated: Date;
+}
+
 export class FirestoreService {
   // User Operations
   static async getUser(userId: string): Promise<User | null> {
@@ -64,15 +89,10 @@ export class FirestoreService {
       return onSnapshot(wardrobeRef, 
         (snapshot) => {
           try {
-            const items = snapshot.docs.map(doc => {
-              const data = doc.data();
-              return { 
-                id: doc.id, 
-                ...data 
-              } as WardrobeItem;
-            }).filter(item => item && item.id); // Filter out any malformed items
+            const items = snapshot.docs.map(doc => Object.assign({}, doc.data(), { id: doc.id }));
+            const validItems = items.filter(item => item.id && item.name && item.category && item.brand && item.color && item.imageUrl && item.userId).map(item => item as WardrobeItem);
             
-            onUpdate(items);
+            onUpdate(validItems);
           } catch (error) {
             console.error('Error processing wardrobe items:', error);
             onError(error);
@@ -115,7 +135,7 @@ export class FirestoreService {
       // Get all items in the user's wardrobe
       const wardrobeRef = collection(db, 'users', newItem.userId, 'wardrobe');
       const snapshot = await getDocs(wardrobeRef);
-      const existingItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WardrobeItem));
+      const existingItems = snapshot.docs.map(doc => Object.assign({}, doc.data(), { id: doc.id }));
 
       // Check for duplicates based on multiple criteria
       return existingItems.filter(item => {
@@ -165,7 +185,11 @@ export class FirestoreService {
       
       const itemsCol = collection(db, 'users', userId, 'wardrobe');
       const itemSnapshot = await getDocs(query(itemsCol, orderBy('createdAt', 'desc')));
-      return itemSnapshot.docs.map(doc => doc.data() as WardrobeItem);
+      const items = itemSnapshot.docs.map(doc => Object.assign({}, doc.data(), { id: doc.id }));
+
+      // Filter for required fields and then cast to WardrobeItem[]
+      const validItems = items.filter(item => item.id && item.name && item.category && item.brand && item.color && item.imageUrl && item.userId).map(item => item as WardrobeItem);
+      return validItems;
     } catch (error) {
       console.error('Error getting wardrobe items:', error);
       return []; // Return empty array instead of throwing
@@ -177,6 +201,16 @@ export class FirestoreService {
     const outfitsCol = collection(db, 'users', userId, 'outfits');
     const outfitSnapshot = await getDocs(query(outfitsCol, orderBy('createdAt', 'desc')));
     return outfitSnapshot.docs.map(doc => doc.data() as Outfit);
+  }
+
+  static async deleteOutfit(userId: string, outfitId: string): Promise<void> {
+    try {
+      const outfitRef = doc(db, 'users', userId, 'outfits', outfitId);
+      await deleteDoc(outfitRef);
+    } catch (error) {
+      console.error('Error deleting outfit:', error);
+      throw error;
+    }
   }
   
   static async addSwipeRecord(userId: string, outfitId: string, action: 'like' | 'dislike' | 'superlike', context: any): Promise<void> {
@@ -362,11 +396,9 @@ export class FirestoreService {
     );
     
     return onSnapshot(q, (querySnapshot) => {
-      const items = querySnapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id,
-      })) as WardrobeItem[];
-      callback(items);
+      const items = querySnapshot.docs.map(doc => Object.assign({}, doc.data(), { id: doc.id }));
+      const validItems = items.filter(item => item.id && item.name && item.category && item.brand && item.color && item.imageUrl && item.userId).map(item => item as WardrobeItem);
+      callback(validItems);
     });
   }
 
@@ -476,22 +508,21 @@ export class FirestoreService {
       }
 
       const querySnapshot = await getDocs(q);
-      const items = querySnapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id,
-      })) as WardrobeItem[];
+      const items = querySnapshot.docs.map(doc => Object.assign({}, doc.data(), { id: doc.id }));
 
       // Filter by search term in memory for better performance
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
-        return items.filter(item =>
+        const validItems = items.filter(item =>
           item.name.toLowerCase().includes(term) ||
           item.brand.toLowerCase().includes(term) ||
-          item.tags.some(tag => tag.toLowerCase().includes(term))
+          item.tags.some((tag: string) => tag.toLowerCase().includes(term))
         );
+        return validItems.filter(item => item.id && item.name && item.category && item.brand && item.color && item.imageUrl && item.userId).map(item => item as WardrobeItem);
       }
 
-      return items;
+      const validItems = items.filter(item => item.id && item.name && item.category && item.brand && item.color && item.imageUrl && item.userId).map(item => item as WardrobeItem);
+      return validItems;
     } catch (error) {
       console.error('Error searching wardrobe items:', error);
       throw error;
@@ -533,6 +564,196 @@ export class FirestoreService {
     } catch (error) {
       console.error('Error getting wardrobe analytics:', error);
       throw error;
+    }
+  }
+
+  static async getRetailerProducts(category?: string, color?: string): Promise<any[]> {
+    try {
+      let q = collection(db, 'shopping_products');
+      let queryRef = q as any;
+      if (category) queryRef = query(queryRef, where('category', '==', category));
+      if (color) queryRef = query(queryRef, where('color', '==', color));
+      const snapshot = await getDocs(queryRef);
+      return snapshot.docs.map(doc => Object.assign({}, doc.data(), { id: doc.id })) as any[];
+    } catch (error) {
+      console.error('Error fetching retailer products:', error);
+      return [];
+    }
+  }
+
+  // Save user preferences for reinforcement learning
+  static async saveUserPreferences(userId: string, preferences: UserPreference[]): Promise<void> {
+    try {
+      const batch = writeBatch(db);
+      
+      for (const preference of preferences) {
+        const prefRef = doc(db, 'user_preferences', `${userId}_${preference.itemId}_${Date.now()}`);
+        batch.set(prefRef, {
+          ...preference,
+          timestamp: preference.timestamp.toISOString(),
+        });
+      }
+      
+      await batch.commit();
+      console.log(`[Firestore] Saved ${preferences.length} preferences for user ${userId}`);
+    } catch (error) {
+      console.error('Error saving user preferences:', error);
+      throw error;
+    }
+  }
+
+  // Load user preferences for reinforcement learning
+  static async loadUserPreferences(userId: string): Promise<UserPreference[]> {
+    try {
+      const preferencesRef = collection(db, 'user_preferences');
+      const q = query(
+        preferencesRef,
+        where('userId', '==', userId),
+        orderBy('timestamp', 'desc'),
+        limit(1000) // Limit to last 1000 preferences
+      );
+      
+      const snapshot = await getDocs(q);
+      const preferences: UserPreference[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        preferences.push({
+          ...data,
+          timestamp: new Date(data.timestamp),
+        } as UserPreference);
+      });
+      
+      console.log(`[Firestore] Loaded ${preferences.length} preferences for user ${userId}`);
+      return preferences;
+    } catch (error) {
+      console.error('Error loading user preferences:', error);
+      return [];
+    }
+  }
+
+  // Save preference scores for faster lookup
+  static async savePreferenceScores(userId: string, scores: PreferenceScore[]): Promise<void> {
+    try {
+      const batch = writeBatch(db);
+      
+      for (const score of scores) {
+        const scoreRef = doc(db, 'preference_scores', `${userId}_${score.itemId}`);
+        batch.set(scoreRef, {
+          ...score,
+          lastUpdated: score.lastUpdated.toISOString(),
+        });
+      }
+      
+      await batch.commit();
+      console.log(`[Firestore] Saved ${scores.length} preference scores for user ${userId}`);
+    } catch (error) {
+      console.error('Error saving preference scores:', error);
+      throw error;
+    }
+  }
+
+  // Load preference scores for faster lookup
+  static async loadPreferenceScores(userId: string): Promise<PreferenceScore[]> {
+    try {
+      const scoresRef = collection(db, 'preference_scores');
+      const q = query(
+        scoresRef,
+        where('userId', '==', userId),
+        orderBy('lastUpdated', 'desc')
+      );
+      
+      const snapshot = await getDocs(q);
+      const scores: PreferenceScore[] = [];
+      
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        scores.push({
+          ...data,
+          lastUpdated: new Date(data.lastUpdated),
+        } as PreferenceScore);
+      });
+      
+      console.log(`[Firestore] Loaded ${scores.length} preference scores for user ${userId}`);
+      return scores;
+    } catch (error) {
+      console.error('Error loading preference scores:', error);
+      return [];
+    }
+  }
+
+  // Get user preference statistics
+  static async getUserPreferenceStats(userId: string): Promise<{
+    totalInteractions: number;
+    likes: number;
+    dislikes: number;
+    favoriteCategories: string[];
+    favoriteColors: string[];
+    favoriteBrands: string[];
+  }> {
+    try {
+      const preferences = await this.loadUserPreferences(userId);
+      
+      const likes = preferences.filter(p => p.preference === 'like').length;
+      const dislikes = preferences.filter(p => p.preference === 'dislike').length;
+      
+      // Get favorite categories
+      const categoryCounts = preferences
+        .filter(p => p.preference === 'like')
+        .reduce((acc, p) => {
+          acc[p.category] = (acc[p.category] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+      
+      const favoriteCategories = Object.entries(categoryCounts)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5)
+        .map(([category]) => category);
+      
+      // Get favorite colors
+      const colorCounts = preferences
+        .filter(p => p.preference === 'like')
+        .reduce((acc, p) => {
+          acc[p.color] = (acc[p.color] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+      
+      const favoriteColors = Object.entries(colorCounts)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5)
+        .map(([color]) => color);
+      
+      // Get favorite brands
+      const brandCounts = preferences
+        .filter(p => p.preference === 'like')
+        .reduce((acc, p) => {
+          acc[p.brand] = (acc[p.brand] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+      
+      const favoriteBrands = Object.entries(brandCounts)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 5)
+        .map(([brand]) => brand);
+      
+      return {
+        totalInteractions: preferences.length,
+        likes,
+        dislikes,
+        favoriteCategories,
+        favoriteColors,
+        favoriteBrands,
+      };
+    } catch (error) {
+      console.error('Error getting user preference stats:', error);
+      return {
+        totalInteractions: 0,
+        likes: 0,
+        dislikes: 0,
+        favoriteCategories: [],
+        favoriteColors: [],
+        favoriteBrands: [],
+      };
     }
   }
 } 
