@@ -9,7 +9,6 @@ import {
   Alert,
   ActivityIndicator,
   Image,
-  Dimensions,
 } from 'react-native';
 import { Colors } from '../constants/colors';
 import { WardrobeItem, Category } from '../types';
@@ -19,8 +18,6 @@ import { AuthService } from '../services/authService';
 import { Ionicons } from '@expo/vector-icons';
 import { sha256 } from 'js-sha256';
 import * as FileSystem from 'expo-file-system';
-
-const { width } = Dimensions.get('window');
 
 interface WardrobeItemFormProps {
   imageUri: string;
@@ -389,8 +386,8 @@ const styles = StyleSheet.create({
     marginVertical: 20,
   },
   image: {
-    width: width * 0.9,
-    height: width * 0.9,
+    width: 300,
+    height: 300,
     borderRadius: 12,
   },
   loaderOverlay: {

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Dimensions,
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,8 +19,6 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useUser } from '../contexts/UserContext';
 import { RootStackParamList } from '../types';
-
-const { width } = Dimensions.get('window');
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<User | null>(null);
@@ -575,7 +572,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.backgroundCard,
     padding: 15,
     borderRadius: 10,
-    width: width / 4 - 20,
+    width: 70,
   },
   statNumber: {
     fontSize: 20,

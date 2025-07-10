@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -22,13 +21,11 @@ import { FirestoreService } from '../services/firestoreService';
 import { Swipeable } from 'react-native-gesture-handler';
 import Animated, { Extrapolate, interpolate } from 'react-native-reanimated';
 
-const { width, height } = Dimensions.get('window');
-
 interface OutfitSwiperScreenProps {
   navigation: any;
 }
 
-const CARD_HEIGHT = height * 0.8;
+const CARD_HEIGHT = 400; // Assuming a default height, as dimensions are removed
 
 // Custom animation for the carousel items
 const useCustomAnimation = () => {
@@ -44,7 +41,7 @@ const useCustomAnimation = () => {
     const translationX = interpolate(
       value,
       [-1, 0, 1],
-      [-width, 0, width],
+      [-300, 0, 300],
       Extrapolate.CLAMP
     );
     const opacity = interpolate(

@@ -59,12 +59,10 @@ export class WeatherService {
     try {
       const apiKey = this.API_KEY;
       const url = `https://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${lat},${lon}`;
-      console.log('DEBUG: WeatherAPI.com URL:', url);
       const response = await fetch(url);
       if (!response.ok) {
         const errorBody = await response.text();
-        console.log('DEBUG: WeatherAPI.com response status:', response.status);
-        console.log('DEBUG: WeatherAPI.com response body:', errorBody);
+        console.error('WeatherAPI.com error:', response.status, errorBody);
         throw new Error('Failed to fetch weather data');
       }
       const data = await response.json();

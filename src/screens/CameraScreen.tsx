@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Alert,
   Image,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,8 +15,6 @@ import { CameraPhoto } from '../types';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types';
-
-const { width } = Dimensions.get('window');
 
 type CameraScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Camera'>;
 

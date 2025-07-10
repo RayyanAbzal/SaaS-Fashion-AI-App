@@ -137,8 +137,6 @@ Proceed with your analysis of the image provided.`
         throw new Error('Invalid response from OpenAI API - no content found');
       }
       
-      console.log('OpenAI response content:', content);
-      
       // Try to parse the content as JSON
       let analysis: VisionAnalysis;
       try {
@@ -152,7 +150,6 @@ Proceed with your analysis of the image provided.`
           jsonContent = jsonContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
         }
         
-        console.log('Extracted JSON content:', jsonContent);
         analysis = JSON.parse(jsonContent);
       } catch (parseError) {
         console.error('Failed to parse OpenAI response as JSON:', content);
@@ -185,68 +182,6 @@ Proceed with your analysis of the image provided.`
       
       throw new Error('Failed to analyze image. Please try again later.');
     }
-  }
-
-  private getMockAnalysis(): VisionResponse {
-    // This function is no longer used but kept for reference or future use.
-    // It will not be called in the current implementation.
-    const mockAnalyses: VisionAnalysis[] = [
-      {
-        category: 'tops',
-        subcategory: 't-shirt',
-        color: 'white',
-        style: 'casual t-shirt',
-        brand: 'Hallensteins',
-        season: 'summer',
-        tags: ['casual', 'basic', 'cotton', 'versatile'],
-        confidence: 0.92,
-        description: 'White casual t-shirt perfect for everyday wear',
-        isValidClothing: true
-      },
-      {
-        category: 'bottoms',
-        subcategory: 'jeans',
-        color: 'blue',
-        style: 'slim fit jeans',
-        brand: 'Glassons',
-        season: 'all',
-        tags: ['denim', 'casual', 'versatile', 'classic'],
-        confidence: 0.88,
-        description: 'Blue denim jeans with slim fit',
-        isValidClothing: true
-      },
-      {
-        category: 'outerwear',
-        subcategory: 'denim jacket',
-        color: 'black',
-        style: 'denim jacket',
-        brand: 'Country Road',
-        season: 'spring',
-        tags: ['denim', 'casual', 'layered', 'trendy'],
-        confidence: 0.85,
-        description: 'Black denim jacket for layering',
-        isValidClothing: true
-      },
-      {
-        category: 'shoes',
-        subcategory: 'sneakers',
-        color: 'white',
-        style: 'sneakers',
-        brand: 'Kathmandu',
-        season: 'all',
-        tags: ['casual', 'comfortable', 'athletic', 'versatile'],
-        confidence: 0.90,
-        description: 'White sneakers for casual wear',
-        isValidClothing: true
-      }
-    ];
-
-    const randomAnalysis = mockAnalyses[Math.floor(Math.random() * mockAnalyses.length)];
-    
-    return {
-      analysis: randomAnalysis,
-      processingTime: 1200
-    };
   }
 
   async extractColors(imageUrl: string): Promise<string[]> {

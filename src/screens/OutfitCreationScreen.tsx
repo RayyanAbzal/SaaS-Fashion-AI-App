@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,15 +16,12 @@ import {
   WardrobeItem, 
   Occasion, 
   OutfitCreationRequest, 
-  OccasionConfig, 
-  RetailerConfig,
+  OccasionConfig,
   OutfitGenerationResult 
 } from '../types';
 import OutfitGenerationService from '../services/outfitGenerationService';
 import { WeatherService } from '../services/weatherService';
 import * as Location from 'expo-location';
-
-const { width } = Dimensions.get('window');
 
 interface OutfitCreationScreenProps {
   navigation: any;
@@ -37,68 +33,63 @@ interface OutfitCreationScreenProps {
 }
 
 export default function OutfitCreationScreen({ navigation, route }: OutfitCreationScreenProps) {
-  const { selectedItems } = route.params;
-  const [selectedOccasion, setSelectedOccasion] = useState<Occasion>('casual');
-  const [selectedRetailers, setSelectedRetailers] = useState<string[]>(['countryroad']);
-  const [includeWardrobeOnly, setIncludeWardrobeOnly] = useState(false);
-  const [considerWeather, setConsiderWeather] = useState(true);
-  const [considerStylePreferences, setConsiderStylePreferences] = useState(true);
+  const [selectedOccasion, setSelectedOccasion] = useState<Occasion | null>(null);
+  const [selectedRetailers, setSelectedRetailers] = useState<string[]>([]);
+  const [wardrobeOnly, setWardrobeOnly] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationResult, setGenerationResult] = useState<OutfitGenerationResult | null>(null);
+  const [availableRetailers, setAvailableRetailers] = useState<any[]>([]);
   const [availableOccasions, setAvailableOccasions] = useState<OccasionConfig[]>([]);
-  const [availableRetailers, setAvailableRetailers] = useState<RetailerConfig[]>([]);
-
-  useEffect(() => {
-    loadConfiguration();
-  }, []);
 
   const loadConfiguration = () => {
+    // Load available occasions and retailers
     setAvailableOccasions(OutfitGenerationService.getAvailableOccasions());
-    setAvailableRetailers(OutfitGenerationService.getAvailableRetailers());
+    // For now, use empty array for retailers since the method doesn't exist
+    setAvailableRetailers([]);
   };
 
   const handleGenerateOutfits = async () => {
-    if (selectedItems.length === 0) {
-      Alert.alert('No Items Selected', 'Please select at least one item from your wardrobe.');
+    if (!selectedOccasion) {
+      Alert.alert('Error', 'Please select an occasion');
       return;
     }
 
     setIsGenerating(true);
+
     try {
-      // Get current weather if needed
-      let weather;
-      if (considerWeather) {
-        const location = await WeatherService.getCurrentLocation();
-        weather = await WeatherService.getCurrentWeather(location.coords.latitude, location.coords.longitude);
+      // Get user's location for weather data
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      let weatherData = null;
+
+      if (status === 'granted') {
+        const location = await Location.getCurrentPositionAsync({});
+        weatherData = await WeatherService.getCurrentWeather(location.coords.latitude, location.coords.longitude);
       }
 
       const request: OutfitCreationRequest = {
-        selectedItems,
+        selectedItems: route.params.selectedItems,
         occasion: selectedOccasion,
-        weather: weather || undefined,
-        stylePreferences: considerStylePreferences ? ['modern', 'comfortable'] : undefined,
+        weather: weatherData || undefined,
+        stylePreferences: ['casual'],
         retailerPreferences: {
-          enabled: selectedRetailers.length > 0,
+          enabled: !wardrobeOnly,
           retailers: selectedRetailers,
-          includeWardrobeOnly
+          includeWardrobeOnly: wardrobeOnly,
         },
         aiPreferences: {
-          considerWeather,
+          considerWeather: true,
           considerOccasion: true,
-          considerStylePreferences,
+          considerStylePreferences: true,
           generateMultipleOutfits: true,
-          maxOutfits: 3
-        }
+          maxOutfits: 3,
+        },
       };
 
-      const result = await OutfitGenerationService.generateOutfits(request);
-      setGenerationResult(result);
-      
+      const result: OutfitGenerationResult = await OutfitGenerationService.generateOutfits(request);
+
       // Navigate to outfit swiper with the generated outfits
-      navigation.navigate('OutfitSwiper', { 
+      navigation.navigate('OutfitSwiper', {
         outfits: result.outfits,
-        analysis: result.analysis,
-        recommendations: result.recommendations
+        occasion: selectedOccasion,
       });
 
     } catch (error) {
@@ -119,12 +110,12 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
 
   const renderSelectedItems = () => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Selected Items ({selectedItems.length})</Text>
+      <Text style={styles.sectionTitle}>Selected Items ({route.params.selectedItems.length})</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.itemsScroll}>
-        {selectedItems.map((item, index) => (
-          <View key={item.id} style={styles.selectedItem}>
+        {route.params.selectedItems.map((item, index) => (
+          <View key={index} style={styles.selectedItem}>
             <Image source={{ uri: item.imageUrl }} style={styles.selectedItemImage} />
-            <Text style={styles.selectedItemName} numberOfLines={2}>{item.name}</Text>
+            <Text style={styles.selectedItemName}>{item.name}</Text>
             <Text style={styles.selectedItemCategory}>{item.category}</Text>
           </View>
         ))}
@@ -147,7 +138,7 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
           >
             <Ionicons 
               name={occasion.icon as any} 
-              size={24} 
+              size={32} 
               color={selectedOccasion === occasion.id ? Colors.primary : Colors.textSecondary} 
             />
             <Text style={[
@@ -156,9 +147,7 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
             ]}>
               {occasion.name}
             </Text>
-            <Text style={styles.occasionDescription} numberOfLines={2}>
-              {occasion.description}
-            </Text>
+            <Text style={styles.occasionDescription}>{occasion.description}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -167,69 +156,47 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
 
   const renderRetailerSelection = () => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Shopping Preferences</Text>
-      
       <View style={styles.retailerToggle}>
-        <Text style={styles.retailerToggleLabel}>Include shopping suggestions</Text>
+        <Text style={styles.retailerToggleLabel}>Include Shopping Suggestions</Text>
         <TouchableOpacity
           style={[
             styles.toggleButton,
-            selectedRetailers.length > 0 && styles.toggleButtonActive
+            !wardrobeOnly && styles.toggleButtonActive
           ]}
-          onPress={() => {
-            if (selectedRetailers.length > 0) {
-              setSelectedRetailers([]);
-            } else {
-              setSelectedRetailers(['countryroad']);
-            }
-          }}
+          onPress={() => setWardrobeOnly(!wardrobeOnly)}
         >
           <Ionicons 
-            name={selectedRetailers.length > 0 ? 'checkmark' : 'close'} 
+            name={wardrobeOnly ? 'close' : 'checkmark'} 
             size={16} 
-            color={Colors.text} 
+            color={wardrobeOnly ? Colors.textSecondary : Colors.text} 
           />
         </TouchableOpacity>
       </View>
 
-      {selectedRetailers.length > 0 && (
-        <>
-          <View style={styles.retailerGrid}>
-            {availableRetailers.map((retailer) => (
-              <TouchableOpacity
-                key={retailer.id}
-                style={[
-                  styles.retailerCard,
-                  selectedRetailers.includes(retailer.id) && styles.retailerCardSelected
-                ]}
-                onPress={() => toggleRetailer(retailer.id)}
-              >
+      {!wardrobeOnly && (
+        <View style={styles.retailerGrid}>
+          {availableRetailers.map((retailer) => (
+            <TouchableOpacity
+              key={retailer.id}
+              style={[
+                styles.retailerCard,
+                selectedRetailers.includes(retailer.id) && styles.retailerCardSelected
+              ]}
+              onPress={() => toggleRetailer(retailer.id)}
+            >
+              {retailer.logo && (
                 <Image source={{ uri: retailer.logo }} style={styles.retailerLogo} />
-                <Text style={[
-                  styles.retailerName,
-                  selectedRetailers.includes(retailer.id) && styles.retailerNameSelected
-                ]}>
-                  {retailer.name}
-                </Text>
-                <Text style={styles.retailerPriceRange}>{retailer.priceRange}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <TouchableOpacity
-            style={styles.wardrobeOnlyToggle}
-            onPress={() => setIncludeWardrobeOnly(!includeWardrobeOnly)}
-          >
-            <Ionicons 
-              name={includeWardrobeOnly ? 'checkmark-circle' : 'ellipse-outline'} 
-              size={20} 
-              color={includeWardrobeOnly ? Colors.primary : Colors.textSecondary} 
-            />
-            <Text style={styles.wardrobeOnlyText}>
-              Include wardrobe-only outfits (no shopping items)
-            </Text>
-          </TouchableOpacity>
-        </>
+              )}
+              <Text style={[
+                styles.retailerName,
+                selectedRetailers.includes(retailer.id) && styles.retailerNameSelected
+              ]}>
+                {retailer.name}
+              </Text>
+              <Text style={styles.retailerPriceRange}>{retailer.priceRange}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       )}
     </View>
   );
@@ -238,39 +205,48 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>AI Preferences</Text>
       
-      <TouchableOpacity
-        style={styles.preferenceRow}
-        onPress={() => setConsiderWeather(!considerWeather)}
-      >
-        <Ionicons 
-          name={considerWeather ? 'checkmark-circle' : 'ellipse-outline'} 
-          size={20} 
-          color={considerWeather ? Colors.primary : Colors.textSecondary} 
-        />
-        <Text style={styles.preferenceText}>Consider current weather</Text>
-      </TouchableOpacity>
+      <View style={styles.wardrobeOnlyToggle}>
+        <TouchableOpacity
+          style={[
+            styles.toggleButton,
+            wardrobeOnly && styles.toggleButtonActive
+          ]}
+          onPress={() => setWardrobeOnly(!wardrobeOnly)}
+        >
+          <Ionicons 
+            name={wardrobeOnly ? 'checkmark' : 'close'} 
+            size={16} 
+            color={wardrobeOnly ? Colors.text : Colors.textSecondary} 
+          />
+        </TouchableOpacity>
+        <Text style={styles.wardrobeOnlyText}>Wardrobe items only</Text>
+      </View>
 
-      <TouchableOpacity
-        style={styles.preferenceRow}
-        onPress={() => setConsiderStylePreferences(!considerStylePreferences)}
-      >
-        <Ionicons 
-          name={considerStylePreferences ? 'checkmark-circle' : 'ellipse-outline'} 
-          size={20} 
-          color={considerStylePreferences ? Colors.primary : Colors.textSecondary} 
-        />
-        <Text style={styles.preferenceText}>Consider style preferences</Text>
-      </TouchableOpacity>
+      <View style={styles.preferenceRow}>
+        <Ionicons name="color-palette" size={16} color={Colors.textSecondary} />
+        <Text style={styles.preferenceText}>Color harmony</Text>
+      </View>
+
+      <View style={styles.preferenceRow}>
+        <Ionicons name="thermometer" size={16} color={Colors.textSecondary} />
+        <Text style={styles.preferenceText}>Weather appropriate</Text>
+      </View>
+
+      <View style={styles.preferenceRow}>
+        <Ionicons name="heart" size={16} color={Colors.textSecondary} />
+        <Text style={styles.preferenceText}>Style preferences</Text>
+      </View>
     </View>
   );
+
+  useEffect(() => {
+    loadConfiguration();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Create Outfit</Text>
@@ -288,10 +264,10 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
         <TouchableOpacity
           style={[
             styles.generateButton,
-            (isGenerating || selectedItems.length === 0) && styles.generateButtonDisabled
+            (!selectedOccasion || isGenerating) && styles.generateButtonDisabled
           ]}
           onPress={handleGenerateOutfits}
-          disabled={isGenerating || selectedItems.length === 0}
+          disabled={!selectedOccasion || isGenerating}
         >
           {isGenerating ? (
             <ActivityIndicator size="small" color={Colors.text} />
@@ -375,7 +351,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   occasionCard: {
-    width: (width - 48) / 2,
+    width: 150,
     padding: 16,
     backgroundColor: Colors.backgroundCard,
     borderRadius: 12,
@@ -426,7 +402,7 @@ const styles = StyleSheet.create({
   },
   toggleButtonActive: {
     backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    color: Colors.text,
   },
   retailerGrid: {
     flexDirection: 'row',
@@ -435,7 +411,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   retailerCard: {
-    width: (width - 48) / 2,
+    width: 150,
     padding: 16,
     backgroundColor: Colors.backgroundCard,
     borderRadius: 12,

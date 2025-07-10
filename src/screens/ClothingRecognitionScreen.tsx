@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   Image,
   Alert,
   ScrollView,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,8 +15,6 @@ import { useNavigation } from '@react-navigation/native';
 import { Colors } from '@/constants/colors';
 import { analyzeClothingPhoto, validatePhotoQuality, ClothingItem, RecognitionResult } from '@/services/clothingRecognitionService';
 import { CameraPhoto } from '@/types';
-
-const { width, height } = Dimensions.get('window');
 
 export default function ClothingRecognitionScreen() {
   const navigation = useNavigation();

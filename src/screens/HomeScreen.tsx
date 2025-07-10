@@ -173,19 +173,19 @@ export default function HomeScreen() {
             <View style={styles.weatherDetails}>
               <View style={styles.weatherDetail}>
                 <Ionicons name="thermometer" size={20} color={Colors.text} />
-                <Text style={styles.detailText}>
+                <Text style={styles.detailText} numberOfLines={1} ellipsizeMode="tail">
                   Feels like {weather.feelsLike}°C
                 </Text>
               </View>
               <View style={styles.weatherDetail}>
                 <Ionicons name="water" size={20} color={Colors.text} />
-                <Text style={styles.detailText}>
+                <Text style={styles.detailText} numberOfLines={1} ellipsizeMode="tail">
                   Humidity {weather.humidity}%
                 </Text>
               </View>
               <View style={styles.weatherDetail}>
                 <Ionicons name="umbrella" size={20} color={Colors.text} />
-                <Text style={styles.detailText}>
+                <Text style={styles.detailText} numberOfLines={1} ellipsizeMode="tail">
                   Rain {weather.precipitation}mm
                 </Text>
               </View>
@@ -384,53 +384,70 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+    flexWrap: 'wrap', // allow wrapping
   },
   weatherDetail: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1, // ensure each detail takes equal space
+    minWidth: 0, // allow shrinking
   },
   detailText: {
     marginLeft: 8,
     color: Colors.text,
+    flexShrink: 1,
   },
   recommendationsCard: {
     backgroundColor: Colors.backgroundCard,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 24,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 21,
+    fontWeight: '700',
     color: Colors.text,
-    marginBottom: 16,
+    marginBottom: 18,
   },
   categorySection: {
-    marginBottom: 16,
+    marginBottom: 18,
   },
   categoryTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: Colors.text,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   recommendationsList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 10,
   },
   recommendationItem: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.background,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 22,
+    marginRight: 10,
+    marginBottom: 10,
+    minHeight: 38,
+    minWidth: 44,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
   },
   recommendationText: {
-    marginLeft: 8,
+    marginLeft: 10,
     color: Colors.text,
+    fontSize: 15,
+    fontWeight: '500',
   },
   mainActionButton: {
     backgroundColor: Colors.primary,
@@ -502,17 +519,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.backgroundCard,
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 18,
-    marginTop: 8,
-    borderWidth: 1,
+    borderRadius: 20, // increased for pill look
+    paddingVertical: 16, // more vertical padding
+    paddingHorizontal: 24, // more horizontal padding
+    marginBottom: 24, // more space below
+    marginTop: 12,
+    borderWidth: 1.5,
     borderColor: Colors.primary,
     justifyContent: 'center',
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   pinterestButtonText: {
     color: Colors.primary,
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: 17,
+    letterSpacing: 0.2,
   },
 }); 

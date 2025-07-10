@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
   FlatList,
   Image,
@@ -13,9 +12,26 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors, Gradients } from '@/constants/colors';
-import { StyleMoment, Reaction } from '@/types';
 
-const { width, height } = Dimensions.get('window');
+// Define missing types locally
+interface StyleMoment {
+  id: string;
+  userId: string;
+  outfitId: string;
+  imageUrl: string;
+  caption: string;
+  location: string;
+  tags: string[];
+  reactions: Reaction[];
+  createdAt: Date;
+  expiresAt: Date;
+}
+
+interface Reaction {
+  type: 'fire' | 'love' | 'cool';
+  userId: string;
+  timestamp: Date;
+}
 
 export default function StyleMomentsScreen() {
   const [moments, setMoments] = useState<StyleMoment[]>([]);
@@ -45,31 +61,32 @@ export default function StyleMomentsScreen() {
       },
       {
         id: '2',
-        userId: 'user2',
+        userId: 'user1',
         outfitId: 'outfit2',
         imageUrl: 'https://via.placeholder.com/400x600/4ECDC4/FFFFFF?text=Style+2',
-        caption: 'Study session fit 📚',
-        location: 'Library',
-        tags: ['study', 'comfortable', 'neutral'],
+        caption: 'Coffee shop aesthetic ☕️',
+        location: 'Local Coffee Shop',
+        tags: ['coffee', 'casual', 'minimalist'],
         reactions: [
-          { type: 'like', userId: 'user1', timestamp: new Date() },
           { type: 'fire', userId: 'user5', timestamp: new Date() },
+          { type: 'love', userId: 'user6', timestamp: new Date() },
         ],
         createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000), // 4 hours ago
         expiresAt: new Date(Date.now() + 20 * 60 * 60 * 1000), // 20 hours left
       },
       {
         id: '3',
-        userId: 'user3',
+        userId: 'user1',
         outfitId: 'outfit3',
-        imageUrl: 'https://via.placeholder.com/400x600/FFD93D/FFFFFF?text=Style+3',
-        caption: 'Weekend energy! 🌟',
-        location: 'Downtown',
-        tags: ['weekend', 'party', 'bold'],
+        imageUrl: 'https://via.placeholder.com/400x600/45B7D1/FFFFFF?text=Style+3',
+        caption: 'Weekend brunch outfit 🥂',
+        location: 'Downtown Restaurant',
+        tags: ['brunch', 'elegant', 'weekend'],
         reactions: [
-          { type: 'love', userId: 'user1', timestamp: new Date() },
-          { type: 'fire', userId: 'user2', timestamp: new Date() },
-          { type: 'wow', userId: 'user6', timestamp: new Date() },
+          { type: 'fire', userId: 'user7', timestamp: new Date() },
+          { type: 'love', userId: 'user8', timestamp: new Date() },
+          { type: 'cool', userId: 'user9', timestamp: new Date() },
+          { type: 'fire', userId: 'user10', timestamp: new Date() },
         ],
         createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
         expiresAt: new Date(Date.now() + 18 * 60 * 60 * 1000), // 18 hours left
@@ -79,184 +96,158 @@ export default function StyleMomentsScreen() {
     setMoments(mockMoments);
   };
 
-  const handleReaction = (momentId: string, reactionType: Reaction['type']) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+  const handleMomentPress = (moment: StyleMoment) => {
+    setSelectedMoment(moment);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedMoment(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleReaction = (momentId: string, reactionType: 'fire' | 'love' | 'cool') => {
     setMoments(prev => prev.map(moment => {
       if (moment.id === momentId) {
         const newReaction: Reaction = {
           type: reactionType,
           userId: 'currentUser',
-          timestamp: new Date()
+          timestamp: new Date(),
         };
-        
         return {
           ...moment,
-          reactions: [...moment.reactions, newReaction]
+          reactions: [...moment.reactions, newReaction],
         };
       }
       return moment;
     }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const getReactionCount = (moment: StyleMoment, type: Reaction['type']) => {
-    return moment.reactions.filter(r => r.type === type).length;
-  };
-
-  const getTimeRemaining = (expiresAt: Date) => {
-    const now = new Date();
-    const diff = expiresAt.getTime() - now.getTime();
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    }
-    return `${minutes}m`;
+  const getReactionCount = (reactions: Reaction[], type: 'fire' | 'love' | 'cool') => {
+    return reactions.filter((r: Reaction) => r.type === type).length;
   };
 
   const renderMoment = ({ item }: { item: StyleMoment }) => (
     <TouchableOpacity
       style={styles.momentCard}
-      onPress={() => setSelectedMoment(item)}
+      onPress={() => handleMomentPress(item)}
+      activeOpacity={0.9}
     >
-      <View style={styles.momentImage}>
-        <View style={styles.momentOverlay}>
-          <View style={styles.momentHeader}>
-            <View style={styles.userInfo}>
-              <View style={styles.avatar}>
-                <Ionicons name="person" size={20} color={Colors.text} />
-              </View>
-              <Text style={styles.username}>User {item.userId.slice(-1)}</Text>
-            </View>
-            <Text style={styles.timeRemaining}>{getTimeRemaining(item.expiresAt)}</Text>
-          </View>
-          
-          <View style={styles.momentContent}>
-            <Text style={styles.caption}>{item.caption}</Text>
-            {item.location && (
-              <View style={styles.locationContainer}>
-                <Ionicons name="location" size={14} color={Colors.textSecondary} />
-                <Text style={styles.location}>{item.location}</Text>
-              </View>
-            )}
-          </View>
-          
+      <Image source={{ uri: item.imageUrl }} style={styles.momentImage} />
+      <View style={styles.momentOverlay}>
+        <View style={styles.momentHeader}>
+          <Text style={styles.momentCaption}>{item.caption}</Text>
+          <Text style={styles.momentLocation}>{item.location}</Text>
+        </View>
+        
+        <View style={styles.momentFooter}>
           <View style={styles.reactionsContainer}>
-            <View style={styles.reactionButtons}>
-              <TouchableOpacity
-                style={styles.reactionButton}
-                onPress={() => handleReaction(item.id, 'like')}
-              >
-                <Ionicons name="heart" size={20} color={Colors.like} />
-                <Text style={styles.reactionCount}>{getReactionCount(item, 'like')}</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.reactionButton}
-                onPress={() => handleReaction(item.id, 'fire')}
-              >
-                <Ionicons name="flame" size={20} color={Colors.fire} />
-                <Text style={styles.reactionCount}>{getReactionCount(item, 'fire')}</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.reactionButton}
-                onPress={() => handleReaction(item.id, 'cool')}
-              >
-                <Ionicons name="snow" size={20} color={Colors.cool} />
-                <Text style={styles.reactionCount}>{getReactionCount(item, 'cool')}</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.reactionButton}
-                onPress={() => handleReaction(item.id, 'wow')}
-              >
-                <Ionicons name="star" size={20} color={Colors.accent} />
-                <Text style={styles.reactionCount}>{getReactionCount(item, 'wow')}</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <TouchableOpacity style={styles.shareButton}>
-              <Ionicons name="share" size={20} color={Colors.text} />
+            <TouchableOpacity
+              style={styles.reactionButton}
+              onPress={() => handleReaction(item.id, 'fire')}
+            >
+              <Text style={styles.reactionEmoji}>🔥</Text>
+              <Text style={styles.reactionCount}>{getReactionCount(item.reactions, 'fire')}</Text>
             </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.reactionButton}
+              onPress={() => handleReaction(item.id, 'love')}
+            >
+              <Text style={styles.reactionEmoji}>❤️</Text>
+              <Text style={styles.reactionCount}>{getReactionCount(item.reactions, 'love')}</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.reactionButton}
+              onPress={() => handleReaction(item.id, 'cool')}
+            >
+              <Text style={styles.reactionEmoji}>😎</Text>
+              <Text style={styles.reactionCount}>{getReactionCount(item.reactions, 'cool')}</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.tagsContainer}>
+            {item.tags.map((tag: string, index: number) => (
+              <View key={index} style={styles.tag}>
+                <Text style={styles.tagText}>#{tag}</Text>
+              </View>
+            ))}
           </View>
         </View>
       </View>
     </TouchableOpacity>
   );
 
-  const renderMomentDetail = () => {
-    if (!selectedMoment) return null;
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Style Moments</Text>
+        <Text style={styles.subtitle}>Share your daily looks</Text>
+      </View>
 
-    return (
-      <View style={styles.momentDetailModal}>
-        <View style={styles.momentDetailContent}>
-          <View style={styles.detailHeader}>
-            <Text style={styles.detailTitle}>Style Moment</Text>
+      <FlatList
+        data={moments}
+        renderItem={renderMoment}
+        keyExtractor={(item) => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.momentsList}
+      />
+
+      {selectedMoment && (
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackground}
+            onPress={handleCloseModal}
+            activeOpacity={1}
+          />
+          <View style={styles.momentDetailContent}>
             <TouchableOpacity
               style={styles.closeButton}
-              onPress={() => setSelectedMoment(null)}
+              onPress={handleCloseModal}
             >
               <Ionicons name="close" size={24} color={Colors.text} />
             </TouchableOpacity>
-          </View>
-          
-          <View style={styles.detailImage}>
-            <View style={styles.imagePlaceholder}>
-              <Text style={styles.imageText}>Outfit Image</Text>
-            </View>
-          </View>
-          
-          <Text style={styles.detailCaption}>{selectedMoment.caption}</Text>
-          
-          <View style={styles.detailStats}>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Total Reactions:</Text>
-              <Text style={styles.statValue}>{selectedMoment.reactions.length}</Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Time Left:</Text>
-              <Text style={styles.statValue}>{getTimeRemaining(selectedMoment.expiresAt)}</Text>
-            </View>
-            <View style={styles.statRow}>
-              <Text style={styles.statLabel}>Tags:</Text>
-              <View style={styles.tagsContainer}>
-                {selectedMoment.tags.map((tag, index) => (
-                  <View key={index} style={styles.tag}>
-                    <Text style={styles.tagText}>#{tag}</Text>
+            
+            <Image source={{ uri: selectedMoment.imageUrl }} style={styles.detailImage} />
+            
+            <View style={styles.detailContent}>
+              <Text style={styles.detailCaption}>{selectedMoment.caption}</Text>
+              <Text style={styles.detailLocation}>{selectedMoment.location}</Text>
+              
+              <View style={styles.detailReactions}>
+                <Text style={styles.detailReactionsTitle}>Reactions</Text>
+                <View style={styles.detailReactionsList}>
+                  <View style={styles.detailReaction}>
+                    <Text style={styles.detailReactionEmoji}>🔥</Text>
+                    <Text style={styles.detailReactionCount}>{getReactionCount(selectedMoment.reactions, 'fire')}</Text>
                   </View>
-                ))}
+                  <View style={styles.detailReaction}>
+                    <Text style={styles.detailReactionEmoji}>❤️</Text>
+                    <Text style={styles.detailReactionCount}>{getReactionCount(selectedMoment.reactions, 'love')}</Text>
+                  </View>
+                  <View style={styles.detailReaction}>
+                    <Text style={styles.detailReactionEmoji}>😎</Text>
+                    <Text style={styles.detailReactionCount}>{getReactionCount(selectedMoment.reactions, 'cool')}</Text>
+                  </View>
+                </View>
+              </View>
+              
+              <View style={styles.detailTags}>
+                <Text style={styles.detailTagsTitle}>Tags</Text>
+                <View style={styles.detailTagsList}>
+                  {selectedMoment.tags.map((tag: string, index: number) => (
+                    <View key={index} style={styles.detailTag}>
+                      <Text style={styles.detailTagText}>#{tag}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
             </View>
           </View>
         </View>
-      </View>
-    );
-  };
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.appTitle}>Style Moments</Text>
-          <TouchableOpacity style={styles.addButton}>
-            <Ionicons name="add" size={24} color={Colors.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.content}>
-        <FlatList
-          data={moments}
-          renderItem={renderMoment}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.momentsList}
-        />
-      </View>
-
-      {renderMomentDetail()}
+      )}
     </SafeAreaView>
   );
 }
@@ -270,36 +261,24 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.backgroundSecondary,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    padding: 20,
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  appTitle: {
-    fontSize: 24,
+  title: {
+    fontSize: 28,
     fontWeight: 'bold',
     color: Colors.text,
+    marginBottom: 4,
   },
-  addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  content: {
-    flex: 1,
+  subtitle: {
+    fontSize: 16,
+    color: Colors.textSecondary,
   },
   momentsList: {
     padding: 20,
   },
   momentCard: {
-    width: width - 40,
-    height: height * 0.4,
+    width: '100%',
+    height: 300,
     borderRadius: 16,
     overflow: 'hidden',
     marginBottom: 20,
@@ -314,172 +293,56 @@ const styles = StyleSheet.create({
   },
   momentImage: {
     flex: 1,
-    justifyContent: 'space-between',
-    backgroundColor: Colors.backgroundSecondary,
+    width: '100%',
+    height: '100%',
+    borderRadius: 16,
   },
   momentOverlay: {
-    flex: 1,
-    padding: 20,
-    justifyContent: 'space-between',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
   },
   momentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: 'column',
+    justifyContent: 'flex-end',
+    height: '60%',
   },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  username: {
-    fontSize: 16,
-    fontWeight: '600',
+  momentCaption: {
+    fontSize: 20,
+    fontWeight: 'bold',
     color: Colors.text,
+    marginBottom: 4,
   },
-  timeRemaining: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    backgroundColor: Colors.backgroundGlass,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  momentContent: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  caption: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 8,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  location: {
+  momentLocation: {
     fontSize: 14,
     color: Colors.textSecondary,
-    marginLeft: 4,
   },
-  reactionsContainer: {
+  momentFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 10,
   },
-  reactionButtons: {
+  reactionsContainer: {
     flexDirection: 'row',
   },
   reactionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.backgroundGlass,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginRight: 8,
+    marginRight: 15,
+  },
+  reactionEmoji: {
+    fontSize: 20,
   },
   reactionCount: {
-    fontSize: 12,
+    fontSize: 14,
     color: Colors.text,
     marginLeft: 4,
-  },
-  shareButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.backgroundGlass,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  momentDetailModal: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: Colors.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  momentDetailContent: {
-    width: width - 40,
-    maxHeight: height * 0.8,
-    padding: 20,
-    borderRadius: 16,
-    backgroundColor: Colors.backgroundSecondary,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  detailTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: Colors.text,
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.backgroundGlass,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  detailImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 16,
-    backgroundColor: Colors.backgroundGlass,
-  },
-  imagePlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.backgroundGlass,
-  },
-  imageText: {
-    fontSize: 16,
-    color: Colors.textSecondary,
-  },
-  detailCaption: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 16,
-  },
-  detailStats: {
-    gap: 12,
-  },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-  },
-  statValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: Colors.text,
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -488,11 +351,119 @@ const styles = StyleSheet.create({
   },
   tag: {
     backgroundColor: Colors.primary,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   tagText: {
+    fontSize: 12,
+    color: Colors.text,
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  modalBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  momentDetailContent: {
+    width: '90%',
+    maxHeight: '80%',
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 15,
+    right: 15,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundGlass,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  detailImage: {
+    width: '100%',
+    height: 250,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  detailContent: {
+    padding: 20,
+  },
+  detailCaption: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 8,
+  },
+  detailLocation: {
+    fontSize: 16,
+    color: Colors.textSecondary,
+    marginBottom: 15,
+  },
+  detailReactions: {
+    marginBottom: 15,
+  },
+  detailReactionsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 10,
+  },
+  detailReactionsList: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  detailReaction: {
+    alignItems: 'center',
+  },
+  detailReactionEmoji: {
+    fontSize: 24,
+  },
+  detailReactionCount: {
+    fontSize: 14,
+    color: Colors.text,
+    marginTop: 4,
+  },
+  detailTags: {
+    marginTop: 15,
+  },
+  detailTagsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 10,
+  },
+  detailTagsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  detailTag: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  detailTagText: {
     fontSize: 12,
     color: Colors.text,
   },
