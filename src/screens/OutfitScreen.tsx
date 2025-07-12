@@ -76,8 +76,8 @@ export default function OutfitScreen() {
   const [selectedOutfits, setSelectedOutfits] = useState<Outfit[]>([]);
 
   const filteredOutfits = outfits.filter(outfit => {
-    const matchesSeason = selectedSeason === 'all' || outfit.season.includes(selectedSeason);
-    const matchesOccasion = selectedOccasion === 'all' || outfit.occasion.includes(selectedOccasion);
+    const matchesSeason = selectedSeason === 'all' || (Array.isArray(outfit.season) && outfit.season.includes(selectedSeason));
+    const matchesOccasion = selectedOccasion === 'all' || (Array.isArray(outfit.occasion) && outfit.occasion.includes(selectedOccasion));
     const matchesSearch = outfit.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          outfit.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFavorites = !showFavoritesOnly || outfit.isFavorite;

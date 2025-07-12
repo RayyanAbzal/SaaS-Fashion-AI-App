@@ -119,6 +119,21 @@ export interface WardrobeItem {
   imageHash?: string;
 }
 
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  category: Category;
+  color: string;
+  brand: string;
+  size: string;
+  imageUrl: string;
+  price: number;
+  currency: string;
+  retailer: string;
+  tags: string[];
+  isAvailable: boolean;
+}
+
 export interface ColorAnalysis {
   primaryColor: string;
   secondaryColors: string[];

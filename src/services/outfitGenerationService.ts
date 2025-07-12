@@ -205,7 +205,7 @@ class OutfitGenerationService {
     const selectedCategories = selectedItems.map(item => item.category);
     const allCategories: Category[] = ['tops', 'bottoms', 'shoes', 'accessories', 'outerwear'];
     
-    return allCategories.filter(category => !selectedCategories.includes(category));
+    return allCategories.filter(category => !Array.isArray(selectedCategories) || !selectedCategories.includes(category));
   }
 
   /**
@@ -408,7 +408,7 @@ class OutfitGenerationService {
       }
 
       // Weather conditions check
-      if (item.weatherCompatibility.weatherConditions.includes(weather.condition.toLowerCase())) {
+      if (Array.isArray(item.weatherCompatibility.weatherConditions) && item.weatherCompatibility.weatherConditions.includes(weather.condition.toLowerCase())) {
         score += 0.1;
       }
     }
@@ -518,11 +518,11 @@ class OutfitGenerationService {
     const notes: string[] = [];
     
     const categories = outfitItems.map(item => item.category);
-    if (categories.includes('tops') && categories.includes('bottoms')) {
+    if (Array.isArray(categories) && categories.includes('tops') && categories.includes('bottoms')) {
       notes.push('Complete top and bottom combination');
     }
     
-    if (categories.includes('shoes')) {
+    if (Array.isArray(categories) && categories.includes('shoes')) {
       notes.push('Footwear included for complete look');
     }
     
@@ -719,7 +719,7 @@ class OutfitGenerationService {
     if (weather.uv > 7) {
       const hasUVProtection = items.some(item => 
         item.category === 'accessories' && 
-        item.tags && (item.tags.includes('sun-protection') || item.tags.includes('hat'))
+        item.tags && (Array.isArray(item.tags) && (item.tags.includes('sun-protection') || item.tags.includes('hat')))
       );
       if (!hasUVProtection) {
         score -= 0.1;
@@ -750,7 +750,7 @@ class OutfitGenerationService {
         score += (matchingGuidelines.length * 0.1);
 
         // Check formality match
-        if (item.tags.includes(occasionConfig.formality)) {
+        if (Array.isArray(item.tags) && item.tags.includes(occasionConfig.formality)) {
           score += 0.1;
         }
       }
@@ -832,11 +832,11 @@ class OutfitGenerationService {
     
     const styleTips: string[] = [];
     
-    if (missingCategories.includes('shoes')) {
+    if (Array.isArray(missingCategories) && missingCategories.includes('shoes')) {
       styleTips.push('Add footwear to complete your look');
     }
     
-    if (missingCategories.includes('accessories')) {
+    if (Array.isArray(missingCategories) && missingCategories.includes('accessories')) {
       styleTips.push('Consider adding accessories for extra style');
     }
     

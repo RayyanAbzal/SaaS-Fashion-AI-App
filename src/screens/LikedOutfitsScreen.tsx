@@ -109,13 +109,13 @@ export default function OutfitsScreen() {
     let filteredOutfits = outfits;
     switch (activeTab) {
       case 'created':
-        filteredOutfits = outfits.filter(outfit => !outfit.aiGenerated && !outfit.tags.includes('liked'));
+        filteredOutfits = outfits.filter(outfit => !outfit.aiGenerated && !(Array.isArray(outfit.tags) && outfit.tags.includes('liked')));
         break;
       case 'ai-generated':
-        filteredOutfits = outfits.filter(outfit => outfit.aiGenerated && !outfit.tags.includes('liked'));
+        filteredOutfits = outfits.filter(outfit => outfit.aiGenerated && !(Array.isArray(outfit.tags) && outfit.tags.includes('liked')));
         break;
       case 'pinterest':
-        filteredOutfits = outfits.filter(outfit => outfit.tags.includes('pinterest'));
+        filteredOutfits = outfits.filter(outfit => Array.isArray(outfit.tags) && outfit.tags.includes('pinterest'));
         break;
       case 'all':
         filteredOutfits = outfits;
@@ -200,7 +200,7 @@ export default function OutfitsScreen() {
       <Ionicons 
         name={icon as any} 
         size={20} 
-        color={activeTab === category ? Colors.primary : Colors.textSecondary} 
+        color={activeTab === category ? Colors.background : Colors.textSecondary} 
       />
       <Text style={[styles.tabButtonText, activeTab === category && styles.activeTabButtonText]}>
         {title}
@@ -211,9 +211,13 @@ export default function OutfitsScreen() {
   const renderLikedOutfitCard = ({ item }: { item: LikedOutfit }) => {
     const wardrobeItems = item.outfitSuggestion.items.filter(item => 'userId' in item) as WardrobeItem[];
     const shoppingItems = item.outfitSuggestion.items.filter(item => !('userId' in item)) as ShoppingItem[];
-
+    // Main image: use first item's imageUrl if available
+    const mainImageUrl = item.outfitSuggestion.items[0]?.imageUrl;
     return (
       <View style={styles.outfitCard}>
+        {mainImageUrl && (
+          <Image source={{ uri: mainImageUrl }} style={styles.outfitImage} />
+        )}
         <View style={styles.outfitHeader}>
           <Text style={styles.outfitTitle}>Liked from Swiper</Text>
           <TouchableOpacity
@@ -223,13 +227,12 @@ export default function OutfitsScreen() {
             <Ionicons name="close-circle" size={24} color={Colors.error} />
           </TouchableOpacity>
         </View>
-
         <View style={styles.itemsContainer}>
-          {item.outfitSuggestion.items.length > 0 ? (
-            item.outfitSuggestion.items.slice(0, 3).map((outfitItem, index) => {
+          {(item.outfitSuggestion.items || []).length > 0 ?
+            (item.outfitSuggestion.items || []).slice(0, 3).map((outfitItem, index) => {
               const isWardrobeItem = 'userId' in outfitItem;
               return (
-                <View key={`${outfitItem.id}-${index}`} style={styles.itemCard}>
+                <View key={`${outfitItem.id}-${index}-${item.id}`} style={styles.itemCard}>
                   <Image 
                     source={{ uri: outfitItem.imageUrl }} 
                     style={styles.itemImage}
@@ -252,18 +255,25 @@ export default function OutfitsScreen() {
                 </View>
               );
             })
-          ) : (
+          : (
             <View style={styles.placeholderContainer}>
               <Ionicons name="shirt-outline" size={48} color={Colors.textSecondary} />
               <Text style={styles.placeholderText}>Outfit items not available</Text>
             </View>
           )}
         </View>
-
         <View style={styles.outfitFooter}>
           <Text style={styles.reasoningText} numberOfLines={2}>
             {item.outfitSuggestion.reasoning}
           </Text>
+          {/* Render tags for liked outfits: use ['liked', 'swiper', occasion] */}
+          <View style={styles.tagsContainer}>
+            {['liked', 'swiper', item.outfitSuggestion.occasion || 'casual'].slice(0, 3).map((tag, idx) => (
+              <View key={`${item.id}-liked-${tag}-${idx}`} style={styles.tag}>
+                <Text style={styles.tagText}>{tag}</Text>
+              </View>
+            ))}
+          </View>
           <Text style={styles.likedDate}>
             Liked on {item.likedAt.toLocaleDateString()}
           </Text>
@@ -272,39 +282,41 @@ export default function OutfitsScreen() {
     );
   };
 
-  const renderSavedOutfitCard = ({ item }: { item: Outfit }) => (
-    <View style={styles.outfitCard}>
-      <View style={styles.outfitHeader}>
-        <Text style={styles.outfitTitle}>{item.name}</Text>
-        <TouchableOpacity
-          style={styles.removeButton}
-          onPress={() => handleDeleteOutfit(item.id)}
-        >
-          <Ionicons name="trash-outline" size={24} color={Colors.error} />
-        </TouchableOpacity>
-      </View>
-
-      {item.imageUrl && (
-        <Image source={{ uri: item.imageUrl }} style={styles.outfitImage} />
-      )}
-
-      <View style={styles.outfitFooter}>
-        <Text style={styles.outfitDescription} numberOfLines={2}>
-          {item.description}
-        </Text>
-        <View style={styles.tagsContainer}>
-          {item.tags.slice(0, 3).map(tag => (
-            <View key={tag} style={styles.tag}>
-              <Text style={styles.tagText}>{tag}</Text>
-            </View>
-          ))}
+  const renderSavedOutfitCard = ({ item }: { item: Outfit }) => {
+    // Main image: use item.imageUrl or fallback to first item's imageUrl
+    const mainImageUrl = item.imageUrl || item.items?.[0]?.imageUrl;
+    return (
+      <View style={styles.outfitCard}>
+        {mainImageUrl && (
+          <Image source={{ uri: mainImageUrl }} style={styles.outfitImage} />
+        )}
+        <View style={styles.outfitHeader}>
+          <Text style={styles.outfitTitle}>{item.name}</Text>
+          <TouchableOpacity
+            style={styles.removeButton}
+            onPress={() => handleDeleteOutfit(item.id)}
+          >
+            <Ionicons name="trash-outline" size={24} color={Colors.error} />
+          </TouchableOpacity>
         </View>
-        <Text style={styles.likedDate}>
-          Created on {new Date(item.createdAt).toLocaleDateString()}
-        </Text>
+        <View style={styles.outfitFooter}>
+          <Text style={styles.outfitDescription} numberOfLines={2}>
+            {item.description}
+          </Text>
+          <View style={styles.tagsContainer}>
+            {(item.tags || []).slice(0, 3).map((tag, idx) => (
+              <View key={`${item.id}-${tag}-${idx}`} style={styles.tag}>
+                <Text style={styles.tagText}>{tag}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.likedDate}>
+            Created on {new Date(item.createdAt).toLocaleDateString()}
+          </Text>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   if (loading) {
     return (
@@ -315,30 +327,79 @@ export default function OutfitsScreen() {
     );
   }
 
-  const currentData = activeTab === 'liked' ? likedOutfits : savedOutfits;
-  const isEmpty = currentData.length === 0;
+  let isEmpty = false;
+  let listComponent = null;
+  if (activeTab === 'liked') {
+    isEmpty = likedOutfits.length === 0;
+    listComponent = (
+      <FlatList
+        data={likedOutfits}
+        renderItem={renderLikedOutfitCard}
+        keyExtractor={(item, index) => item.id ? `${item.id}` : `outfit-${index}`}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      />
+    );
+  } else if (activeTab === 'all') {
+    isEmpty = savedOutfits.length === 0;
+    listComponent = (
+      <FlatList
+        data={savedOutfits}
+        renderItem={renderSavedOutfitCard}
+        keyExtractor={(item, index) => item.id ? `${item.id}` : `outfit-${index}`}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      />
+    );
+  } else {
+    const filtered = savedOutfits.filter(outfit => !(Array.isArray(outfit.tags) && outfit.tags.includes('liked')));
+    isEmpty = filtered.length === 0;
+    listComponent = (
+      <FlatList
+        data={filtered}
+        renderItem={renderSavedOutfitCard}
+        keyExtractor={(item, index) => item.id ? `${item.id}` : `outfit-${index}`}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        showsVerticalScrollIndicator={false}
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Outfits</Text>
         <Text style={styles.headerSubtitle}>
-          {currentData.length} outfit{currentData.length !== 1 ? 's' : ''} in {activeTab}
+          {activeTab === 'liked'
+            ? `${likedOutfits.length} outfit${likedOutfits.length !== 1 ? 's' : ''} in liked`
+            : activeTab === 'all'
+              ? `${savedOutfits.length} outfit${savedOutfits.length !== 1 ? 's' : ''} in all`
+              : `${savedOutfits.filter(outfit => !(Array.isArray(outfit.tags) && outfit.tags.includes('liked'))).length} outfit${savedOutfits.filter(outfit => !(Array.isArray(outfit.tags) && outfit.tags.includes('liked'))).length !== 1 ? 's' : ''} in ${activeTab}`
+          }
         </Text>
       </View>
-
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={styles.tabsContainer}
-        contentContainerStyle={styles.tabsContent}
-      >
-        {renderTabButton('liked', 'Liked', 'heart')}
-        {renderTabButton('created', 'Created', 'create')}
-        {renderTabButton('ai-generated', 'AI Generated', 'sparkles')}
-        {renderTabButton('pinterest', 'Pinterest', 'logo-pinterest')}
-        {renderTabButton('all', 'All', 'grid')}
-      </ScrollView>
+      <View style={styles.tabsContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabsContent}
+        >
+          {renderTabButton('liked', 'Liked', 'heart')}
+          {renderTabButton('created', 'Created', 'create')}
+          {renderTabButton('ai-generated', 'AI Generated', 'sparkles')}
+          {renderTabButton('pinterest', 'Pinterest', 'logo-pinterest')}
+          {renderTabButton('all', 'All', 'grid')}
+        </ScrollView>
+      </View>
 
       {isEmpty ? (
         <View style={styles.emptyContainer}>
@@ -360,31 +421,7 @@ export default function OutfitsScreen() {
           )}
         </View>
       ) : (
-        <>
-          {activeTab === 'liked' ? (
-            <FlatList
-              data={likedOutfits}
-              renderItem={renderLikedOutfitCard}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.listContainer}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-              }
-              showsVerticalScrollIndicator={false}
-            />
-          ) : (
-            <FlatList
-              data={savedOutfits}
-              renderItem={renderSavedOutfitCard}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.listContainer}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-              }
-              showsVerticalScrollIndicator={false}
-            />
-          )}
-        </>
+        listComponent
       )}
     </SafeAreaView>
   );
@@ -407,48 +444,65 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   header: {
-    padding: 20,
-    paddingBottom: 10,
+    padding: 24,
+    paddingBottom: 8,
+    alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: 'bold',
     color: Colors.text,
-    marginBottom: 4,
+    marginBottom: 6,
+    textAlign: 'center',
   },
   headerSubtitle: {
     fontSize: 16,
     color: Colors.textSecondary,
+    marginBottom: 18,
+    textAlign: 'center',
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 18,
     padding: 40,
+    margin: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   emptyTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
     color: Colors.text,
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 24,
+    marginBottom: 10,
+    textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 16,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 32,
   },
   startSwipingButton: {
     backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
+    paddingHorizontal: 36,
+    paddingVertical: 18,
+    borderRadius: 28,
+    marginTop: 10,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   startSwipingButtonText: {
     color: Colors.text,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
+    letterSpacing: 0.2,
   },
   listContainer: {
     padding: 16,
@@ -551,28 +605,42 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   tabsContainer: {
-    padding: 10,
+    paddingHorizontal: 10,
+    marginBottom: 18,
   },
   tabsContent: {
-    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 2,
   },
   tabButton: {
-    padding: 10,
-    borderWidth: 2,
-    borderColor: Colors.border,
-    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 22,
+    backgroundColor: Colors.backgroundCard,
     marginRight: 10,
+    borderWidth: 0,
+    minWidth: 90,
+    justifyContent: 'center',
   },
   activeTabButton: {
-    borderColor: Colors.primary,
+    backgroundColor: Colors.primary,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   tabButtonText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 'bold',
     color: Colors.text,
+    marginLeft: 8,
   },
   activeTabButtonText: {
-    color: Colors.primary,
+    color: Colors.background,
   },
   outfitImage: {
     width: '100%',

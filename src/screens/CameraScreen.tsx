@@ -22,6 +22,7 @@ export default function CameraScreen() {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [capturedImage, setCapturedImage] = useState<CameraPhoto | null>(null);
   const navigation = useNavigation<CameraScreenNavigationProp>();
+  const [hasShownInstructions, setHasShownInstructions] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -29,6 +30,16 @@ export default function CameraScreen() {
       setHasPermission(status === 'granted');
     })();
   }, []);
+
+  useEffect(() => {
+    if (hasPermission && !hasShownInstructions) {
+      Alert.alert(
+        'Photo Instructions',
+        'Take a clear photo of your clothing item against a plain background. Make sure the item is well-lit and not obstructed.',
+        [{ text: 'OK', onPress: () => setHasShownInstructions(true) }]
+      );
+    }
+  }, [hasPermission, hasShownInstructions]);
 
   const takePicture = async () => {
     try {
@@ -139,33 +150,28 @@ export default function CameraScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.button} onPress={handleCancel}>
-            <Ionicons name="close" size={40} color="white" />
-          </TouchableOpacity>
-        </View>
+      {/* Header */}
+      <View style={styles.headerRow}>
+        <TouchableOpacity style={styles.closeButton} onPress={handleCancel}>
+          <Ionicons name="close" size={28} color={Colors.text} />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Take Photo</Text>
+        <View style={{ width: 28 }} />
       </View>
-      
-      <View style={styles.cameraContainer}>
-        <View style={styles.cameraPlaceholder}>
-          <Ionicons name="camera" size={120} color={Colors.textSecondary} />
-          <Text style={styles.cameraPlaceholderText}>Camera</Text>
-          <Text style={styles.cameraPlaceholderSubtext}>Tap the button below to take a photo</Text>
+
+      {/* Main Content */}
+      <View style={styles.mainContent}>
+        <View style={styles.cameraCard}>
+          <Ionicons name="camera" size={64} color={Colors.textSecondary} />
         </View>
-        
-        <View style={styles.cameraControls}>
-          <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
-            <Ionicons name="camera" size={40} color={Colors.text} />
-            <Text style={styles.captureButtonText}>Take Photo</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.galleryButton} onPress={pickImage}>
-            <Ionicons name="images" size={24} color={Colors.text} />
-            <Text style={styles.galleryButtonText}>Choose from Gallery</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.cameraLabel}>Camera</Text>
+        <Text style={styles.cameraInstructions}>
+          Place your clothing item on a plain background and tap below to take a clear, well-lit photo.
+        </Text>
+        <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+          <Ionicons name="camera" size={28} color={Colors.text} />
+          <Text style={styles.captureButtonText}>Take Photo</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -185,9 +191,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: Colors.text,
+    textAlign: 'center',
+    flex: 1,
   },
   centerContent: {
     flex: 1,
@@ -240,19 +248,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   captureButton: {
-    width: '100%',
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: Colors.backgroundCard,
-    justifyContent: 'center',
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    borderRadius: 24,
+    paddingVertical: 16,
+    paddingHorizontal: 36,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
   },
   captureButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: 'bold',
     color: Colors.text,
-    marginTop: 10,
+    marginLeft: 10,
   },
   galleryButton: {
     width: '100%',
@@ -327,5 +339,55 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.backgroundCard,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: Colors.background,
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.backgroundCard,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mainContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  cameraCard: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: Colors.backgroundCard,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+    shadowColor: Colors.primary,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  cameraLabel: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  cameraInstructions: {
+    fontSize: 15,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 32,
+    marginHorizontal: 8,
   },
 }); 

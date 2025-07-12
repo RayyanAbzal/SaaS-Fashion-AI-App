@@ -198,14 +198,56 @@ export class FirestoreService {
 
   // Outfit Operations
   static async getOutfits(userId: string): Promise<Outfit[]> {
-    const outfitsCol = collection(db, 'users', userId, 'outfits');
-    const outfitSnapshot = await getDocs(query(outfitsCol, orderBy('createdAt', 'desc')));
-    return outfitSnapshot.docs.map(doc => doc.data() as Outfit);
+    try {
+      if (!userId) {
+        console.warn('getOutfits called with undefined userId');
+        return [];
+      }
+      
+      const outfitsCol = collection(db, 'users', userId, 'outfits');
+      const outfitSnapshot = await getDocs(query(outfitsCol, orderBy('createdAt', 'desc')));
+      
+      return outfitSnapshot.docs.map(doc => {
+        const data = doc.data();
+        // Ensure all required fields are present with defaults
+        return {
+          ...data,
+          id: doc.id,
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          items: Array.isArray(data.items) ? data.items : [],
+          shoppingItems: Array.isArray(data.shoppingItems) ? data.shoppingItems : [],
+          season: Array.isArray(data.season) ? data.season : [],
+          occasion: Array.isArray(data.occasion) ? data.occasion : [],
+          isFavorite: data.isFavorite || false,
+          confidenceScore: data.confidenceScore || 0,
+          wearCount: data.wearCount || 0,
+          aiGenerated: data.aiGenerated || false,
+          quickPick: data.quickPick || false,
+          outfitType: data.outfitType || 'wardrobe-only',
+          createdAt: data.createdAt || new Date(),
+          updatedAt: data.updatedAt || new Date(),
+        } as Outfit;
+      });
+    } catch (error) {
+      console.error('Error getting outfits:', error);
+      return []; // Return empty array instead of throwing
+    }
   }
 
   static async deleteOutfit(userId: string, outfitId: string): Promise<void> {
     try {
+      // Fetch the outfit before deleting for debugging
       const outfitRef = doc(db, 'users', userId, 'outfits', outfitId);
+      const outfitSnap = await getDoc(outfitRef);
+      if (outfitSnap.exists()) {
+        const outfitData = outfitSnap.data();
+        console.log('[DEBUG] Deleting outfit:', outfitData);
+        console.log('[DEBUG] Outfit tags:', outfitData.tags);
+        console.log('[DEBUG] Outfit tags type:', typeof outfitData.tags);
+        console.log('[DEBUG] Outfit tags isArray:', Array.isArray(outfitData.tags));
+      } else {
+        console.log('[DEBUG] Outfit not found before deletion:', outfitId);
+      }
       await deleteDoc(outfitRef);
     } catch (error) {
       console.error('Error deleting outfit:', error);
@@ -403,18 +445,55 @@ export class FirestoreService {
   }
 
   static subscribeToOutfits(userId: string, callback: (outfits: Outfit[]) => void) {
-    const q = query(
-      collection(db, 'users', userId, 'outfits'),
-      orderBy('createdAt', 'desc')
-    );
-    
-    return onSnapshot(q, (querySnapshot) => {
-      const outfits = querySnapshot.docs.map(doc => ({
-        ...doc.data(),
-        id: doc.id,
-      })) as Outfit[];
-      callback(outfits);
-    });
+    try {
+      if (!userId) {
+        console.warn('subscribeToOutfits called with undefined userId');
+        callback([]);
+        return () => {};
+      }
+      
+      const q = query(
+        collection(db, 'users', userId, 'outfits'),
+        orderBy('createdAt', 'desc')
+      );
+      
+      return onSnapshot(q, (querySnapshot) => {
+        try {
+          const outfits = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            // Ensure all required fields are present with defaults
+            return {
+              ...data,
+              id: doc.id,
+              tags: Array.isArray(data.tags) ? data.tags : [],
+              items: Array.isArray(data.items) ? data.items : [],
+              shoppingItems: Array.isArray(data.shoppingItems) ? data.shoppingItems : [],
+              season: Array.isArray(data.season) ? data.season : [],
+              occasion: Array.isArray(data.occasion) ? data.occasion : [],
+              isFavorite: data.isFavorite || false,
+              confidenceScore: data.confidenceScore || 0,
+              wearCount: data.wearCount || 0,
+              aiGenerated: data.aiGenerated || false,
+              quickPick: data.quickPick || false,
+              outfitType: data.outfitType || 'wardrobe-only',
+              createdAt: data.createdAt || new Date(),
+              updatedAt: data.updatedAt || new Date(),
+            } as Outfit;
+          });
+          callback(outfits);
+        } catch (error) {
+          console.error('Error processing outfits in subscription:', error);
+          callback([]);
+        }
+      }, (error) => {
+        console.error('Error in outfits subscription:', error);
+        callback([]);
+      });
+    } catch (error) {
+      console.error('Error setting up outfits subscription:', error);
+      callback([]);
+      return () => {};
+    }
   }
 
   static subscribeToNotifications(userId: string, callback: (notifications: Notification[]) => void) {
@@ -516,7 +595,7 @@ export class FirestoreService {
         const validItems = items.filter(item =>
           item.name.toLowerCase().includes(term) ||
           item.brand.toLowerCase().includes(term) ||
-          item.tags.some((tag: string) => tag.toLowerCase().includes(term))
+          (Array.isArray(item.tags) && item.tags.some((tag: string) => tag.toLowerCase().includes(term)))
         );
         return validItems.filter(item => item.id && item.name && item.category && item.brand && item.color && item.imageUrl && item.userId).map(item => item as WardrobeItem);
       }
