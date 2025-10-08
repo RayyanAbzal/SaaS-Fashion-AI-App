@@ -13,7 +13,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '../constants/colors';
 import { AuthService } from '../services/authService';
-import { FirestoreService } from '../services/firestoreService';
 import { User, Achievement, MainTabParamList } from '../types';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -64,8 +63,15 @@ export default function ProfileScreen() {
       
       // Load preference statistics if user exists
       if (currentUser?.id) {
-        const stats = await FirestoreService.getUserPreferenceStats(currentUser.id);
-        setPreferenceStats(stats);
+        // Placeholder - will work once Supabase is configured
+        setPreferenceStats({
+          totalInteractions: 0,
+          likes: 0,
+          dislikes: 0,
+          favoriteCategories: [],
+          favoriteColors: [],
+          favoriteBrands: [],
+        });
         
         // Load detailed learning progress for debug mode
         await loadLearningProgress(currentUser.id);
@@ -96,7 +102,8 @@ export default function ProfileScreen() {
 
   const loadLearningProgress = async (userId: string) => {
     try {
-      const preferences = await FirestoreService.loadUserPreferences(userId);
+      // Placeholder - will work once Supabase is configured
+      const preferences: any[] = [];
       
       // Calculate category scores
       const categoryScores: Record<string, { likes: number; total: number }> = {};

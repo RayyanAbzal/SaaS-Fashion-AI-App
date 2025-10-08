@@ -13,8 +13,7 @@ import { Colors } from '../constants/colors';
 import { Achievement } from '../types';
 import { useUser } from '../contexts/UserContext';
 import AchievementBadge from '../components/AchievementBadge';
-import { collection, getDocs } from 'firebase/firestore';
-import { db } from '../services/firebase';
+import { AchievementService } from '../services/achievementService';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function AchievementsScreen() {
@@ -33,9 +32,7 @@ export default function AchievementsScreen() {
     }
 
     try {
-      const achievementsRef = collection(db, 'users', user.id, 'achievements');
-      const snapshot = await getDocs(achievementsRef);
-      const achievementsList = snapshot.docs.map(doc => ({ ...doc.data() } as Achievement));
+      const achievementsList = await AchievementService.getAchievements(user.id);
       
       // Sort achievements by unlock date
       achievementsList.sort((a, b) => {

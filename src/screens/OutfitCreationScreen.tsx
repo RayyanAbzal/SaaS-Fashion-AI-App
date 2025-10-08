@@ -19,15 +19,15 @@ import {
   OccasionConfig,
   OutfitGenerationResult 
 } from '../types';
-import OutfitGenerationService from '../services/outfitGenerationService';
+import OutfitCreationService from '../services/outfitCreationService';
 import { WeatherService } from '../services/weatherService';
 import * as Location from 'expo-location';
 
 interface OutfitCreationScreenProps {
   navigation: any;
   route: {
-    params: {
-      selectedItems: WardrobeItem[];
+    params?: {
+      selectedItems?: WardrobeItem[];
     };
   };
 }
@@ -42,7 +42,7 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
 
   const loadConfiguration = () => {
     // Load available occasions and retailers
-    setAvailableOccasions(OutfitGenerationService.getAvailableOccasions());
+    setAvailableOccasions(OutfitCreationService.getAvailableOccasions());
     // For now, use empty array for retailers since the method doesn't exist
     setAvailableRetailers([]);
   };
@@ -66,7 +66,7 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
       }
 
       const request: OutfitCreationRequest = {
-        selectedItems: route.params.selectedItems,
+        selectedItems: route.params?.selectedItems || [],
         occasion: selectedOccasion,
         weather: weatherData || undefined,
         stylePreferences: ['casual'],
@@ -84,13 +84,8 @@ export default function OutfitCreationScreen({ navigation, route }: OutfitCreati
         },
       };
 
-      const result: OutfitGenerationResult = await OutfitGenerationService.generateOutfits(request);
-
-      // Navigate to outfit swiper with the generated outfits
-      navigation.navigate('OutfitSwiper', {
-        outfits: result.outfits,
-        occasion: selectedOccasion,
-      });
+      // For streamlined UX, open AI Stylist which generates and handles swiping
+      navigation.navigate('StyleSwipe', {});
 
     } catch (error) {
       console.error('Error generating outfits:', error);

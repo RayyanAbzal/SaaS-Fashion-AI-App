@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "StyleMate",
-    "slug": "stylemate",
+    "name": "Style Oracle",
+    "slug": "style-oracle",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,12 +16,12 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.stylemate.app",
+      "bundleIdentifier": "com.styleoracle.app",
       "infoPlist": {
-        "NSCameraUsageDescription": "StyleMate needs camera access to capture your amazing outfits and provide instant style suggestions.",
-        "NSPhotoLibraryUsageDescription": "StyleMate needs photo library access to analyze your wardrobe and create perfect outfit combinations.",
-        "NSMicrophoneUsageDescription": "StyleMate needs microphone access for voice notes and outfit feedback.",
-        "NSLocationWhenInUseUsageDescription": "StyleMate uses location to provide weather-appropriate outfit suggestions."
+        "NSCameraUsageDescription": "Style Oracle needs camera access to capture your amazing outfits and provide instant style suggestions.",
+        "NSPhotoLibraryUsageDescription": "Style Oracle needs photo library access to analyze your wardrobe and create perfect outfit combinations.",
+        "NSMicrophoneUsageDescription": "Style Oracle needs microphone access for voice notes and outfit feedback.",
+        "NSLocationWhenInUseUsageDescription": "Style Oracle uses location to provide weather-appropriate outfit suggestions."
       }
     },
     "android": {
@@ -29,7 +29,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A0A"
       },
-      "package": "com.stylemate.app",
+      "package": "com.styleoracle.app",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -46,24 +46,20 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow StyleMate to access your camera to take photos of your clothes."
+          "cameraPermission": "Allow Style Oracle to access your camera to take photos of your clothes."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow StyleMate to use your location for weather-based outfit suggestions."
+          "locationAlwaysAndWhenInUsePermission": "Allow Style Oracle to use your location for weather-based outfit suggestions."
         }
       ]
     ],
     "extra": {
       "OPENAI_API_KEY": "EXPO_PUBLIC_OPENAI_API_KEY",
-      "FIREBASE_API_KEY": "EXPO_PUBLIC_FIREBASE_API_KEY",
-      "FIREBASE_AUTH_DOMAIN": "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN",
-      "FIREBASE_PROJECT_ID": "EXPO_PUBLIC_FIREBASE_PROJECT_ID",
-      "FIREBASE_STORAGE_BUCKET": "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET",
-      "FIREBASE_MESSAGING_SENDER_ID": "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
-      "FIREBASE_APP_ID": "EXPO_PUBLIC_FIREBASE_APP_ID",
+      "SUPABASE_URL": "EXPO_PUBLIC_SUPABASE_URL",
+      "SUPABASE_ANON_KEY": "EXPO_PUBLIC_SUPABASE_ANON_KEY",
       "OPENWEATHER_API_KEY": "aecef3b72e2592271ee8bbeb9d2c0566",
       "openWeatherApiKey": "aecef3b72e2592271ee8bbeb9d2c0566",
       "eas": {

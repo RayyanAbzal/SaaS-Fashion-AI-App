@@ -8,18 +8,19 @@
     "dev": "nodemon index.js"
   },
   "dependencies": {
-    "@google-cloud/vision": "^5.2.0",
+    "@google-cloud/vision": "^5.3.3",
     "axios": "^1.7.2",
     "cheerio": "^1.0.0-rc.12",
     "cors": "^2.8.5",
-    "dotenv": "^16.0.3",
+    "dotenv": "^16.6.1",
+    "expo": "~54.0.12",
+    "expo-file-system": "~19.0.16",
+    "expo-notifications": "~0.32.12",
     "express": "^4.19.2",
-    "firebase-admin": "^13.4.0",
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^2.6.7",
     "openai": "^4.0.0",
-    "react-native-reanimated": "^3.18.0",
-    "react-native-reanimated-carousel": "^4.0.2"
+    "react-native-worklets": "0.5.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.0"

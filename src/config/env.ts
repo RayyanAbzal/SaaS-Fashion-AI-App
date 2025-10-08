@@ -3,34 +3,22 @@ import Constants from 'expo-constants';
 interface Env {
   OPENWEATHER_API_KEY: string;
   OPENAI_API_KEY: string;
-  FIREBASE_API_KEY: string;
-  FIREBASE_AUTH_DOMAIN: string;
-  FIREBASE_PROJECT_ID: string;
-  FIREBASE_STORAGE_BUCKET: string;
-  FIREBASE_MESSAGING_SENDER_ID: string;
-  FIREBASE_APP_ID: string;
+  SUPABASE_URL: string;
+  SUPABASE_ANON_KEY: string;
 }
 
 export const env: Env = {
   OPENWEATHER_API_KEY: '943f34fc6b214df6bc0221722250501',
   OPENAI_API_KEY: Constants.expoConfig?.extra?.openaiApiKey || '',
-  FIREBASE_API_KEY: Constants.expoConfig?.extra?.firebaseApiKey || '',
-  FIREBASE_AUTH_DOMAIN: Constants.expoConfig?.extra?.firebaseAuthDomain || '',
-  FIREBASE_PROJECT_ID: Constants.expoConfig?.extra?.firebaseProjectId || '',
-  FIREBASE_STORAGE_BUCKET: Constants.expoConfig?.extra?.firebaseStorageBucket || '',
-  FIREBASE_MESSAGING_SENDER_ID: Constants.expoConfig?.extra?.firebaseMessagingSenderId || '',
-  FIREBASE_APP_ID: Constants.expoConfig?.extra?.firebaseAppId || '',
+  SUPABASE_URL: Constants.expoConfig?.extra?.supabaseUrl || '',
+  SUPABASE_ANON_KEY: Constants.expoConfig?.extra?.supabaseAnonKey || '',
 };
 
 interface EnvConfig {
   openaiApiKey: string;
-  firebaseConfig: {
-    apiKey: string;
-    authDomain: string;
-    projectId: string;
-    storageBucket: string;
-    messagingSenderId: string;
-    appId: string;
+  supabaseConfig: {
+    url: string;
+    anonKey: string;
   };
   weatherApiKey: string;
 }
@@ -45,29 +33,21 @@ if (!extra) {
 // Validate required environment variables
 const requiredVars = [
   'OPENAI_API_KEY',
-  'FIREBASE_API_KEY',
-  'FIREBASE_AUTH_DOMAIN',
-  'FIREBASE_PROJECT_ID',
-  'FIREBASE_STORAGE_BUCKET',
-  'FIREBASE_MESSAGING_SENDER_ID',
-  'FIREBASE_APP_ID'
+  'SUPABASE_URL',
+  'SUPABASE_ANON_KEY'
 ];
 
 const missingVars = requiredVars.filter(key => !extra[key]);
 if (missingVars.length > 0) {
-  throw new Error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  console.warn(`Missing environment variables: ${missingVars.join(', ')}. Some features may not work.`);
 }
 
 // Export typed configuration
 export const config: EnvConfig = {
   openaiApiKey: extra.OPENAI_API_KEY,
-  firebaseConfig: {
-    apiKey: extra.FIREBASE_API_KEY,
-    authDomain: extra.FIREBASE_AUTH_DOMAIN,
-    projectId: extra.FIREBASE_PROJECT_ID,
-    storageBucket: extra.FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: extra.FIREBASE_MESSAGING_SENDER_ID,
-    appId: extra.FIREBASE_APP_ID,
+  supabaseConfig: {
+    url: extra.SUPABASE_URL,
+    anonKey: extra.SUPABASE_ANON_KEY,
   },
   weatherApiKey: extra.WEATHER_API_KEY,
 };
@@ -76,9 +56,9 @@ export const config: EnvConfig = {
 export const getMaskedConfig = (): Record<string, any> => {
   return {
     openaiApiKey: maskString(config.openaiApiKey),
-    firebaseConfig: {
-      ...config.firebaseConfig,
-      apiKey: maskString(config.firebaseConfig.apiKey),
+    supabaseConfig: {
+      url: config.supabaseConfig.url,
+      anonKey: maskString(config.supabaseConfig.anonKey),
     },
     weatherApiKey: maskString(config.weatherApiKey),
   };

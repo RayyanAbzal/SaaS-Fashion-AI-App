@@ -1,6 +1,16 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
 import { WeatherData } from '@/services/weatherService';
-import { VisionAnalysis } from "../services/openaiVisionService";
+// Replaced legacy VisionAnalysis with a minimal item analysis type
+export interface ItemAIAnalysis {
+  description?: string;
+  category?: string;
+  subcategory?: string;
+  color?: string;
+  brand?: string;
+  season?: string;
+  confidence?: number;
+  tags?: string[];
+}
 
 export interface User {
   id: string;
@@ -111,7 +121,7 @@ export interface WardrobeItem {
   lastWorn?: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  aiAnalysis?: VisionAnalysis;
+  aiAnalysis?: ItemAIAnalysis;
   confidenceScore?: number;
   colorAnalysis?: ColorAnalysis;
   weatherCompatibility: WeatherCompatibility;
@@ -371,6 +381,73 @@ export interface CameraPhoto {
   base64?: string;
 }
 
+// Social Features Types
+export interface StyleBattle {
+  id: string;
+  title: string;
+  description: string;
+  endTime: Date;
+  participants: number;
+  prize: string;
+  isActive: boolean;
+  category: string;
+  budget?: number;
+  theme?: string;
+  submissions: BattleSubmission[];
+  createdAt: Date;
+  createdBy: string;
+}
+
+export interface BattleSubmission {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  outfit: Outfit;
+  caption: string;
+  votes: number;
+  submittedAt: Date;
+  battleId: string;
+}
+
+export interface OutfitStory {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  outfit: Outfit;
+  caption: string;
+  createdAt: Date;
+  expiresAt: Date;
+  reactions: { [emoji: string]: string[] }; // emoji: userIds[]
+  views: string[];
+  location?: string;
+  tags: string[];
+}
+
+export interface Friend {
+  id: string;
+  name: string;
+  avatar: string;
+  isOnline: boolean;
+  lastActive: Date;
+  styleMatch: number; // 0-100 percentage
+  mutualFriends: number;
+  sharedInterests: string[];
+  isFollowing: boolean;
+  isFollower: boolean;
+}
+
+export interface SocialInteraction {
+  id: string;
+  type: 'like' | 'comment' | 'share' | 'follow' | 'battle_vote';
+  userId: string;
+  targetId: string; // outfit, story, or user id
+  targetType: 'outfit' | 'story' | 'user' | 'battle';
+  content?: string; // for comments
+  createdAt: Date;
+}
+
 export interface ApiError {
   code: string;
   message: string;
@@ -387,7 +464,6 @@ export type MainTabParamList = {
   Home: undefined;
   Wardrobe: undefined;
   Outfits: undefined;
-  Chat: undefined;
   Profile: undefined;
 };
 
@@ -395,15 +471,24 @@ export type RootStackParamList = {
   MainTabs: NavigatorScreenParams<MainTabParamList>;
   Auth: undefined;
   Login: undefined;
-  Camera: undefined;
+  Camera: { mode?: string };
   BrandSelection: undefined;
   ClothingRecognition: undefined;
   OutfitCreation: { selectedItems: WardrobeItem[] };
   Achievements: undefined;
   StylePreferences: undefined;
-  OutfitSwiper: undefined;
-  StyleMate: undefined;
+  OutfitSwiper: { 
+    preGeneratedOutfit?: any; 
+    emergencyMode?: boolean; 
+    occasion?: string;
+    outfitId?: string;
+  };
   PinterestBoard: undefined;
+  AvatarSetup: undefined;
+  AvatarView: undefined;
+  ShoppingAssistant: { userAvatar?: any; outfitSuggestions?: any[] };
+  StyleSwipe: undefined;
+  StyleCheck: undefined;
 };
 
 export interface BrandCategory {

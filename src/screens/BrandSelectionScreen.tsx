@@ -118,8 +118,8 @@ export default function BrandSelectionScreen({ navigation }: BrandSelectionScree
   const loadUserBrandPreferences = async () => {
     try {
       const user = await AuthService.getCurrentUser();
-      if (user?.brandPreferences?.selectedBrands) {
-        setSelectedBrands(user.brandPreferences.selectedBrands);
+      if (user?.brandPreferences?.love) {
+        setSelectedBrands(user.brandPreferences.love);
       }
     } catch (error) {
       console.error('Error loading brand preferences:', error);
@@ -142,11 +142,12 @@ export default function BrandSelectionScreen({ navigation }: BrandSelectionScree
       const user = await AuthService.getCurrentUser();
       if (user) {
         await AuthService.updateBrandPreferences(user.id, {
-          selectedBrands,
-          excludedBrands: [],
+          love: selectedBrands,
+          avoid: [],
+          preferredCategories: [],
+          budget: { min: 0, max: 1000, currency: 'USD' },
           preferredPriceRanges: {},
           brandRatings: {},
-          lastUpdated: new Date(),
         });
         Alert.alert('Success', 'Brand preferences saved!');
         navigation.goBack();

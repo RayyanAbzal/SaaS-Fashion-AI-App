@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -10,207 +9,279 @@ import {
   StyleSheet,
   Alert,
   Linking,
+  Dimensions,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
+import PinterestService, { PinterestItem, PinterestSearchResult } from '../services/pinterestService';
 
-const API_BASE = 'http://localhost:3000/api';
+const { width } = Dimensions.get('window');
 
 export default function PinterestBoardScreen() {
-  const [boardUrl, setBoardUrl] = useState('');
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState(1);
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [clothingResults, setClothingResults] = useState<any[]>([]);
-  const [productResults, setProductResults] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [perImageLoading, setPerImageLoading] = useState<Record<string, boolean>>({});
-  const [gender, setGender] = useState<'female' | 'male'>('female');
+  const [searchResult, setSearchResult] = useState<PinterestSearchResult | null>(null);
+  const [pinterestUrl, setPinterestUrl] = useState('');
+  const [favorites, setFavorites] = useState<PinterestItem[]>([]);
 
-  const handleAnalyzeBoard = async () => {
-    setLoading(true);
-    setError(null);
-    setStep(1);
-    setImageUrls([]);
-    setClothingResults([]);
-    setProductResults([]);
+  const handlePinterestUrlSubmit = async () => {
+    if (!pinterestUrl.trim()) {
+      Alert.alert('Error', 'Please enter a Pinterest URL');
+      return;
+    }
+
     try {
-      // 1. Get image URLs from Pinterest board
-      const res = await fetch(`${API_BASE}/pinterest-board-analyze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ boardUrl }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || 'Failed to analyze board');
-      if (!data.images || data.images.length === 0) throw new Error('No images found on board');
-      setImageUrls(data.images);
-      setStep(2);
-
-      // 2. Analyze images for clothing items
-      const clothingRes = await fetch(`${API_BASE}/analyze-images-for-clothing`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images: data.images }),
-      });
-      const clothingData = await clothingRes.json();
-      if (!clothingData.success) throw new Error(clothingData.error || 'Failed to analyze images');
-      setClothingResults(clothingData.results);
-      setStep(3);
-
-      // 3. Find similar products for all detected clothing items (across all images)
-      const allItems = clothingData.results.flatMap((r: any) =>
-        Array.isArray(r.analyses)
-          ? r.analyses.filter((a: any) => a.isValidClothing)
-          : []
-      );
-      if (allItems.length === 0) throw new Error('No valid clothing items detected.');
-      const productRes = await fetch(`${API_BASE}/find-similar-products`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: allItems, region: 'nz', gender }),
-      });
-      const productData = await productRes.json();
-      if (!productData.success) throw new Error(productData.error || 'Failed to find similar products');
-      setProductResults(productData.results);
-      setStep(4);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred');
-      Alert.alert('Error', err.message || 'An error occurred');
+      setLoading(true);
+      console.log('Processing Pinterest URL:', pinterestUrl);
+      
+      const result = await PinterestService.searchSimilarItems(pinterestUrl.trim());
+      setSearchResult(result);
+      
+    } catch (error) {
+      console.error('Error processing Pinterest URL:', error);
+      Alert.alert('Error', `Failed to process Pinterest URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Helper to open links (works on web and native)
-  const openLink = (url: string) => {
-    if (!url) return;
-    console.log('Opening link:', url); // Debug
-    Linking.openURL(url).catch((err) => {
-      Alert.alert('Error', "Couldn't open the link.");
-    });
-  };
-
-  const getProductResultsForClothing = (clothing: any) => {
-    // Find the product result for this clothing item (by description)
-    return productResults.find(
-      (res: any) => res.item && res.item.description === clothing.description
+  const handleItemPress = (item: PinterestItem) => {
+    Alert.alert(
+      item.name,
+      `$${item.price} • ${item.brand}\n\nSimilarity: ${item.similarity}%`,
+      [
+        {
+          text: 'View in Store',
+          onPress: () => Linking.openURL(item.retailerUrl)
+        },
+        {
+          text: 'Find Nearby',
+          onPress: () => handleFindNearby(item)
+        },
+        {
+          text: 'Save to Favorites',
+          onPress: () => handleSaveToFavorites(item)
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
     );
   };
 
-  const allDetectedClothing = clothingResults.flatMap((result: any) =>
-    Array.isArray(result.analyses)
-      ? result.analyses.filter((a: any) => a.isValidClothing)
-      : []
-  );
+  const handleFindNearby = async (item: PinterestItem) => {
+    try {
+      const locations = await PinterestService.findNearbyRetailers(item);
+      
+      const locationText = locations
+        .filter(loc => loc.hasItem)
+        .map(loc => `${loc.name} - ${loc.distance}km away\n${loc.address}`)
+        .join('\n\n');
+
+      Alert.alert(
+        `Nearby ${item.brand} Stores`,
+        locationText || 'No nearby stores found with this item in stock'
+      );
+    } catch (error) {
+      console.error('Error finding nearby retailers:', error);
+      Alert.alert('Error', 'Could not find nearby retailers');
+    }
+  };
+
+  const handleSaveToFavorites = async (item: PinterestItem) => {
+    try {
+      const success = await PinterestService.saveFavoriteItem('user123', item);
+      if (success) {
+        setFavorites(prev => [...prev, item]);
+        Alert.alert('Success', 'Item saved to favorites!');
+      }
+    } catch (error) {
+      console.error('Error saving to favorites:', error);
+      Alert.alert('Error', 'Could not save to favorites');
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchResult(null);
+    setPinterestUrl('');
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.title}>Pinterest Board Analyzer</Text>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Find Similar Items</Text>
         <Text style={styles.subtitle}>
-          Paste a public Pinterest board link to find shoppable looks and generate outfits!
+            Paste a Pinterest URL to find similar clothing items from online retailers worldwide
         </Text>
-        {/* Gender selector */}
-        <View style={{ flexDirection: 'row', marginBottom: 10, alignItems: 'center' }}>
-          <Text style={{ color: Colors.text, marginRight: 10 }}>Shopping for:</Text>
-          <TouchableOpacity
-            style={[styles.genderButton, gender === 'female' && styles.genderButtonActive]}
-            onPress={() => setGender('female')}
-          >
-            <Text style={[styles.genderButtonText, gender === 'female' && styles.genderButtonTextActive]}>Women</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.genderButton, gender === 'male' && styles.genderButtonActive]}
-            onPress={() => setGender('male')}
-          >
-            <Text style={[styles.genderButtonText, gender === 'male' && styles.genderButtonTextActive]}>Men</Text>
-          </TouchableOpacity>
         </View>
+
+        {/* Pinterest URL Input */}
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Pinterest URL</Text>
         <TextInput
-          style={styles.input}
-          placeholder="Paste Pinterest board URL..."
-          value={boardUrl}
-          onChangeText={setBoardUrl}
+            style={styles.urlInput}
+            placeholder="https://www.pinterest.com/pin/1234567890/"
+            value={pinterestUrl}
+            onChangeText={setPinterestUrl}
           autoCapitalize="none"
           autoCorrect={false}
+            keyboardType="url"
         />
         <TouchableOpacity
-          style={styles.button}
-          onPress={handleAnalyzeBoard}
-          disabled={loading || !boardUrl.trim()}
+            style={[styles.searchButton, loading && styles.searchButtonDisabled]}
+            onPress={handlePinterestUrlSubmit}
+            disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={Colors.text} size="small" />
           ) : (
-            <Text style={styles.buttonText}>Analyze Board</Text>
+              <>
+                <Ionicons name="search" size={20} color={Colors.text} />
+                <Text style={styles.searchButtonText}>Find Similar Items</Text>
+              </>
           )}
         </TouchableOpacity>
+        </View>
 
-        {error && (
-          <Text style={styles.errorText}>{error}</Text>
-        )}
-
-        {step >= 2 && (
-          <View style={styles.section}>
-            {/* Informational message about API limit */}
-            <Text style={[styles.infoText, { marginBottom: 8 }]}>⚠️ For testing, only the first 2 detected clothing items will show shoppable matches due to API limits.</Text>
-            <Text style={styles.sectionTitle}>Board Images & Detected Clothing</Text>
-            {imageUrls.slice(0, 20).map((url, idx) => {
-              const clothingResult = clothingResults[idx];
-              const analyses = Array.isArray(clothingResult?.analyses) ? clothingResult.analyses : [];
-              return (
-                <View key={idx} style={styles.imageClothingGroup}>
-                  <Image source={{ uri: url }} style={styles.imageThumbLarge} resizeMode="cover" />
-                  <View style={styles.clothingItem}>
-                    <Text style={styles.clothingLabel}>Image {idx + 1}</Text>
-                    {clothingResult && clothingResult.error && (
-                      <Text style={styles.errorText}>Error: {clothingResult.error}</Text>
-                    )}
-                    {analyses.length > 0 ? (
-                      analyses.map((clothing: any, cidx: number) => {
-                        const productResult = getProductResultsForClothing(clothing);
-                        return (
-                          <View key={cidx} style={{ marginBottom: 16 }}>
-                            <Text style={styles.clothingText}>{clothing.description}</Text>
-                            <Text style={styles.clothingText}>
-                              {clothing.category} / {clothing.subcategory} | {clothing.color} | {clothing.style}
+        {/* Search Results */}
+        {searchResult && (
+          <View style={styles.resultsContainer}>
+            <View style={styles.resultsHeader}>
+              <Text style={styles.resultsTitle}>
+                Similar Items Found ({searchResult.similarItems.length})
                             </Text>
-                            {/* Loading indicator for this clothing item */}
-                            {perImageLoading && perImageLoading[`${idx}_${cidx}`] && (
-                              <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 8 }} />
-                            )}
-                            {productResult && productResult.similarProducts && productResult.similarProducts.length > 0 && (
-                              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageRow}>
-                                {productResult.similarProducts.map((prod: any, pidx: number) => (
-                                  <View key={pidx} style={styles.productCard}>
-                                    <TouchableOpacity onPress={() => openLink(prod.purchaseUrl)} activeOpacity={0.85}>
-                                      <Image source={{ uri: prod.imageUrl }} style={styles.productImage} />
+              <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
+                <Ionicons name="close" size={20} color={Colors.textSecondary} />
                                     </TouchableOpacity>
-                                    <Text style={styles.productName} numberOfLines={2} ellipsizeMode="tail">{prod.name}</Text>
-                                    {prod.price && (
-                                      <TouchableOpacity onPress={() => openLink(prod.purchaseUrl)} activeOpacity={0.85}>
-                                        <Text style={styles.productPrice}>{typeof prod.price === 'string' ? prod.price : `$${prod.price}`}</Text>
-                                      </TouchableOpacity>
-                                    )}
+            </View>
+
+            {/* Pinterest Image */}
+            <View style={styles.pinterestImageContainer}>
+              <Text style={styles.pinterestLabel}>Pinterest Image:</Text>
+              <Image
+                source={{ uri: searchResult.queryImage }}
+                style={styles.pinterestImage}
+                resizeMode="cover"
+              />
+            </View>
+
+            {/* Fashion Analysis Display */}
+            {searchResult.fashionAnalysis && (
+              <View style={styles.analysisContainer}>
+                <Text style={styles.analysisTitle}>🎨 Fashion Analysis</Text>
+                <View style={styles.analysisGrid}>
+                  <View style={styles.analysisItem}>
+                    <Text style={styles.analysisLabel}>Clothing Types:</Text>
+                    <Text style={styles.analysisValue}>
+                      {searchResult.fashionAnalysis.clothingTypes.join(', ') || 'Not detected'}
+                    </Text>
+                  </View>
+                  <View style={styles.analysisItem}>
+                    <Text style={styles.analysisLabel}>Colors:</Text>
+                    <Text style={styles.analysisValue}>
+                      {searchResult.fashionAnalysis.colors.join(', ') || 'Not detected'}
+                    </Text>
+                  </View>
+                  <View style={styles.analysisItem}>
+                    <Text style={styles.analysisLabel}>Styles:</Text>
+                    <Text style={styles.analysisValue}>
+                      {searchResult.fashionAnalysis.styles.join(', ') || 'Not detected'}
+                    </Text>
                                   </View>
-                                ))}
-                              </ScrollView>
-                            )}
-                            {productResult && (!productResult.similarProducts || productResult.similarProducts.length === 0) && (!perImageLoading || !perImageLoading[`${idx}_${cidx}`]) && (
-                              <Text style={styles.clothingText}>No similar products found.</Text>
-                            )}
+                  <View style={styles.analysisItem}>
+                    <Text style={styles.analysisLabel}>Materials:</Text>
+                    <Text style={styles.analysisValue}>
+                      {searchResult.fashionAnalysis.materials.join(', ') || 'Not detected'}
+                    </Text>
                           </View>
-                        );
-                      })
-                    ) : (
-                      <Text style={styles.clothingText}>No valid clothing detected.</Text>
-                    )}
+                  <View style={styles.analysisItem}>
+                    <Text style={styles.analysisLabel}>Confidence:</Text>
+                    <Text style={styles.analysisValue}>
+                      {Math.round(searchResult.fashionAnalysis.confidence * 100)}%
+                    </Text>
                   </View>
                 </View>
-              );
-            })}
+              </View>
+            )}
+
+            {/* Similar Items Grid */}
+            <View style={styles.itemsGrid}>
+              {searchResult.similarItems.map((item, index) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.itemCard}
+                  onPress={() => handleItemPress(item)}
+                >
+                  <Image
+                    source={{ uri: item.image }}
+                    style={styles.itemImage}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemName} numberOfLines={2}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.itemBrand}>{item.brand}</Text>
+                    <Text style={styles.itemPrice}>${item.price}</Text>
+                    <View style={styles.similarityContainer}>
+                      <Text style={styles.similarityText}>
+                        {item.similarity}% match
+                      </Text>
+                      <View style={styles.similarityBar}>
+                        <View
+                          style={[
+                            styles.similarityFill,
+                            { width: `${item.similarity}%` }
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Search Stats */}
+            <View style={styles.statsContainer}>
+              <Text style={styles.statsText}>
+                Search completed in {searchResult.searchTime}s
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Instructions */}
+        {!searchResult && (
+          <View style={styles.instructionsContainer}>
+            <Text style={styles.instructionsTitle}>How to use:</Text>
+            <View style={styles.instructionItem}>
+              <View style={styles.stepNumber}>
+                <Text style={styles.stepNumberText}>1</Text>
+              </View>
+              <Text style={styles.instructionText}>
+                Find a Pinterest post with clothing you like
+              </Text>
+            </View>
+            <View style={styles.instructionItem}>
+              <View style={styles.stepNumber}>
+                <Text style={styles.stepNumberText}>2</Text>
+              </View>
+              <Text style={styles.instructionText}>
+                Copy the Pinterest URL from your browser
+              </Text>
+            </View>
+            <View style={styles.instructionItem}>
+              <View style={styles.stepNumber}>
+                <Text style={styles.stepNumberText}>3</Text>
+              </View>
+              <Text style={styles.instructionText}>
+                Paste it above and find similar items from online retailers worldwide
+              </Text>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -226,149 +297,222 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
   },
+  header: {
+    marginBottom: 30,
+  },
   title: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: Colors.primary,
+    color: Colors.text,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
     color: Colors.textSecondary,
-    marginBottom: 16,
+    lineHeight: 22,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    backgroundColor: Colors.backgroundCard,
-    color: Colors.text,
+  inputContainer: {
+    marginBottom: 30,
   },
-  button: {
-    backgroundColor: Colors.primary,
-    borderRadius: 8,
-    padding: 14,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+  inputLabel: {
     fontSize: 16,
-  },
-  errorText: {
-    color: Colors.error,
-    marginBottom: 10,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
     fontWeight: '600',
     color: Colors.text,
     marginBottom: 8,
   },
-  imageRow: {
+  urlInput: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 16,
+  },
+  searchButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    padding: 16,
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  searchButtonDisabled: {
+    opacity: 0.6,
+  },
+  searchButtonText: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  resultsContainer: {
+    marginTop: 20,
+  },
+  resultsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  resultsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  clearButton: {
+    padding: 8,
+  },
+  pinterestImageContainer: {
+    marginBottom: 20,
+  },
+  pinterestLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
     marginBottom: 8,
   },
-  imageClothingGroup: {
+  pinterestImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+  },
+  itemsGrid: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 24,
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  itemCard: {
+    width: (width - 60) / 2,
     backgroundColor: Colors.backgroundCard,
-    borderRadius: 10,
-    padding: 10,
-  },
-  imageThumbLarge: {
-    width: 90,
-    height: 90,
-    borderRadius: 10,
-    marginRight: 14,
-    backgroundColor: Colors.backgroundCard,
-  },
-  clothingItem: {
-    marginBottom: 12,
-    backgroundColor: Colors.backgroundCard,
-    borderRadius: 8,
-    padding: 10,
-    flex: 1,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  clothingLabel: {
-    fontWeight: 'bold',
-    color: Colors.primary,
-    marginBottom: 2,
-  },
-  clothingText: {
-    color: Colors.text,
-    fontSize: 14,
-  },
-  productGroup: {
-    marginBottom: 18,
-  },
-  productCard: {
-    width: 120,
-    backgroundColor: Colors.backgroundCard,
-    borderRadius: 8,
-    padding: 8,
-    marginRight: 10,
-    alignItems: 'center',
+    borderRadius: 12,
+    marginBottom: 16,
     overflow: 'hidden',
   },
-  productImage: {
-    width: 80,
-    height: 100,
-    borderRadius: 6,
-    marginBottom: 6,
-    backgroundColor: Colors.background,
+  itemImage: {
+    width: '100%',
+    height: 150,
   },
-  productName: {
-    fontWeight: 'bold',
-    color: Colors.text,
-    fontSize: 13,
-    marginBottom: 2,
-    textAlign: 'center',
-    maxWidth: 100,
+  itemInfo: {
+    padding: 12,
   },
-  productBrand: {
-    color: Colors.textSecondary,
-    fontSize: 12,
-    marginBottom: 2,
-    textAlign: 'center',
-    maxWidth: 100,
-  },
-  productPrice: {
-    color: Colors.primary,
-    fontWeight: 'bold',
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  infoText: {
-    color: Colors.textSecondary,
+  itemName: {
     fontSize: 14,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 4,
   },
-  genderButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.primary,
-    marginRight: 8,
-    backgroundColor: Colors.backgroundCard,
+  itemBrand: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 4,
   },
-  genderButtonActive: {
+  itemPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.primary,
+    marginBottom: 8,
+  },
+  similarityContainer: {
+    marginTop: 4,
+  },
+  similarityText: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  similarityBar: {
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  similarityFill: {
+    height: '100%',
     backgroundColor: Colors.primary,
   },
-  genderButtonText: {
-    color: Colors.primary,
+  statsContainer: {
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  statsText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  instructionsContainer: {
+    marginTop: 40,
+    padding: 20,
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 12,
+  },
+  instructionsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 16,
+  },
+  instructionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  instructionText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    flex: 1,
+  },
+  stepNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stepNumberText: {
+    color: Colors.text,
+    fontSize: 12,
     fontWeight: 'bold',
   },
-  genderButtonTextActive: {
-    color: '#fff',
+  // Fashion Analysis Styles
+  analysisContainer: {
+    marginTop: 16,
+    padding: 16,
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: Colors.primary,
+  },
+  analysisTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 12,
+  },
+  analysisGrid: {
+    gap: 8,
+  },
+  analysisItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  analysisLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    flex: 1,
+  },
+  analysisValue: {
+    fontSize: 14,
+    color: Colors.text,
+    flex: 2,
+    textAlign: 'right',
   },
 }); 

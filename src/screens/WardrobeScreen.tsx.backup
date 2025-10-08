@@ -1,0 +1,978 @@
+import React, { useState, useEffect, useLayoutEffect } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Image,
+  TextInput,
+  ScrollView,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { CompositeScreenProps, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
+
+import { Colors } from '../constants/colors';
+import { WardrobeItem, RootStackParamList, MainTabParamList } from '../types';
+import SupabaseStorageService from '../services/supabaseStorageService';
+import { useUser } from '../contexts/UserContext';
+import WardrobeItemForm from '../components/WardrobeItemForm';
+import { AuthService } from '../services/authService';
+import { AchievementService } from '../services/achievementService';
+import * as WardrobeService from '../services/wardrobeService';
+
+type WardrobeScreenRouteParams = {
+  capturedImageUri?: string;
+};
+
+type WardrobeScreenProps = BottomTabScreenProps<MainTabParamList, 'Wardrobe'> | any;
+
+const CATEGORIES = [
+  { key: 'all', label: 'All', icon: 'shirt-outline' },
+  { key: 'tops', label: 'Tops', icon: 'shirt-outline' },
+  { key: 'bottoms', label: 'Bottoms', icon: 'body-outline' },
+  { key: 'shoes', label: 'Shoes', icon: 'football-outline' },
+  { key: 'accessories', label: 'Accessories', icon: 'bag-outline' },
+  { key: 'outerwear', label: 'Outerwear', icon: 'shirt-outline' },
+];
+
+export default function WardrobeScreen({ navigation, route }: WardrobeScreenProps) {
+  const { user } = useUser();
+  const [items, setItems] = useState<WardrobeItem[]>([]);
+  const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedItem, setSelectedItem] = useState<WardrobeItem | null>(null);
+  const [isFormVisible, setIsFormVisible] = useState(false);
+  const [imageToAdd, setImageToAdd] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [showSearch, setShowSearch] = useState(false);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<WardrobeItem[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: false
+    });
+  }, [navigation]);
+
+  useEffect(() => {
+    const params = route?.params as WardrobeScreenRouteParams | undefined;
+    const capturedImageUri = params?.capturedImageUri;
+    if (capturedImageUri) {
+      setImageToAdd(capturedImageUri);
+      setSelectedItem(null);
+      setIsFormVisible(true);
+      // Reset the param to avoid re-triggering
+      navigation.setParams({ capturedImageUri: undefined });
+    }
+  }, [route?.params]);
+
+  useEffect(() => {
+    const checkUserAndFetchItems = async () => {
+      if (!user || !user.id) {
+        setLoading(false);
+        Alert.alert("Error", "You need to be logged in to see your wardrobe.");
+        return;
+      }
+
+      setLoading(true);
+      
+      // Real-time updates will be implemented with Supabase subscriptions
+      const loadWardrobeItems = async () => {
+        try {
+          if (!user?.id) return;
+          const items = await WardrobeService.getUserWardrobe(user.id);
+          onUpdate(items);
+          setLoading(false);
+        } catch (error) {
+          console.error('Error loading wardrobe:', error);
+          onError(error);
+          setLoading(false);
+        }
+      };
+      loadWardrobeItems();
+      return () => {}; // Placeholder unsubscribe
+      
+      /* const unsubscribe = FirestoreService.onWardrobeUpdate(
+          user.id,
+        (updatedItems: WardrobeItem[]) => {
+            // Ensure all items have required properties
+            const validItems = (updatedItems || []).filter(item => 
+              item && 
+              item.id && 
+              item.name && 
+              item.brand && 
+              item.category &&
+              item.imageUrl
+            );
+            setItems(validItems);
+          if (loading) setLoading(false);
+        },
+        (error: Error) => {
+            console.error('Firestore error:', error);
+          setLoading(false);
+          Alert.alert('Error', 'Could not fetch wardrobe items.');
+        }
+      );
+
+      return () => unsubscribe();
+      } catch (error) {
+        console.error('Error in checkUserAndFetchItems:', error);
+        setLoading(false);
+        Alert.alert('Error', 'Failed to load wardrobe. Please try again.');
+      }
+    };
+
+    checkUserAndFetchItems();
+  }, [user]);
+
+  useEffect(() => {
+    let filtered = items || [];
+    
+    // Filter by category
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(item => item && item.category === selectedCategory);
+    }
+    
+    // Filter by search query
+    if (searchQuery) {
+      filtered = filtered.filter(item => {
+        if (!item) return false;
+        
+        const name = item.name?.toLowerCase() || '';
+        const brand = item.brand?.toLowerCase() || '';
+        const subcategory = item.subcategory?.toLowerCase() || '';
+        const tags = item.tags || [];
+        const searchLower = searchQuery.toLowerCase();
+        
+        return name.includes(searchLower) ||
+               brand.includes(searchLower) ||
+               subcategory.includes(searchLower) ||
+               tags.some(tag => tag?.toLowerCase().includes(searchLower));
+      });
+    }
+    
+    setFilteredItems(filtered);
+  }, [items, selectedCategory, searchQuery]);
+
+  const handleSaveItem = async (item: WardrobeItem, forceSave: boolean = false) => {
+    try {
+      setSaving(true);
+      const currentUser = await AuthService.getCurrentUser();
+      if (!currentUser || !currentUser.id) {
+        throw new Error("Authentication error: No user is currently logged in. Please log out and log back in.");
+      }
+
+      // Duplicate check: name, brand, category, color
+      const isDuplicate = items.some(existing =>
+        existing.name?.toLowerCase() === item.name?.toLowerCase() &&
+        existing.brand?.toLowerCase() === item.brand?.toLowerCase() &&
+        existing.category === item.category &&
+        existing.color?.toLowerCase() === item.color?.toLowerCase()
+      );
+      if (isDuplicate && !forceSave) {
+        setSaving(false);
+        Alert.alert(
+          "Duplicate Item",
+          "This item already exists in your wardrobe.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Add Anyway", style: "default", onPress: () => handleSaveItem(item, true) }
+          ]
+        );
+        return;
+      }
+
+      // Duplicate image check using imageHash
+      const isImageDuplicate = item.imageHash && items.some(existing => existing.imageHash === item.imageHash);
+      if (isImageDuplicate && !forceSave) {
+        setSaving(false);
+        Alert.alert(
+          "Duplicate Image",
+          "An item with this image already exists in your wardrobe.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Add Anyway", style: "default", onPress: () => handleSaveItem(item, true) }
+          ]
+        );
+        return;
+      }
+
+      console.log('User is authenticated with ID:', currentUser.id);
+      
+      if (!imageToAdd) {
+        throw new Error("No image is selected to be uploaded.");
+      }
+
+      const newItemId = selectedItem?.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      let finalItem: WardrobeItem = { 
+        ...item, 
+        id: newItemId, 
+        userId: currentUser.id 
+      };
+
+      // Ensure all required properties are present
+      if (!finalItem.name) finalItem.name = 'Untitled Item';
+      if (!finalItem.brand) finalItem.brand = 'Unknown Brand';
+      if (!finalItem.category) finalItem.category = 'tops';
+      if (!finalItem.color) finalItem.color = 'unknown';
+      if (!finalItem.size) finalItem.size = 'M';
+      if (!finalItem.tags) finalItem.tags = [];
+      if (finalItem.isFavorite === undefined) finalItem.isFavorite = false;
+      if (!finalItem.wearCount) finalItem.wearCount = 0;
+      if (finalItem.lastWorn === undefined) finalItem.lastWorn = null;
+      if (!finalItem.weatherCompatibility) {
+        finalItem.weatherCompatibility = {
+          temperatureRange: { min: 0, max: 30 },
+          weatherConditions: ['clear'],
+          seasonality: ['all']
+        };
+      }
+
+      if (!finalItem.createdAt) {
+        finalItem.createdAt = new Date();
+      }
+      finalItem.updatedAt = new Date();
+      
+      console.log(`Attempting to upload image to path: wardrobe/${finalItem.userId}/${finalItem.id}`);
+      const imageUrl = await SupabaseStorageService.uploadImage(imageToAdd, `wardrobe/${finalItem.userId}/${finalItem.id}`);
+      console.log('Image uploaded successfully, URL:', imageUrl);
+      
+      const itemWithUrl = { ...finalItem, imageUrl };
+
+      try {
+        if (selectedItem) {
+          console.log('Updating existing item...');
+          await WardrobeService.updateWardrobeItem(itemWithUrl);
+          Alert.alert('Success', 'Item updated successfully!');
+        } else {
+          console.log('Adding new item...');
+          await WardrobeService.addWardrobeItem(itemWithUrl);
+          Alert.alert('Success', 'Item added to your wardrobe!');
+        }
+        setIsFormVisible(false);
+        setSelectedItem(null);
+        setImageToAdd(null);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('similar item already exists') && !forceSave) {
+          Alert.alert(
+            'Duplicate Item Detected',
+            'A similar item already exists in your wardrobe. Would you like to add it anyway?',
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                onPress: () => {
+                  // Clean up the uploaded image since we're not using it
+                  SupabaseStorageService.deleteImage(`wardrobe/${finalItem.userId}/${finalItem.id}`).catch(console.error);
+                }
+              },
+              {
+                text: 'Add Anyway',
+                style: 'default',
+                onPress: () => handleSaveItem(item, true)
+              }
+            ]
+          );
+          return;
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error saving item:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+      Alert.alert('Error Saving Item', errorMessage);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleOpenNativeCamera = () => {
+    navigation.navigate('Camera' as any);
+  };
+
+  const handleAddItemFromLibrary = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setImageToAdd(result.assets[0].uri);
+      setSelectedItem(null);
+      setIsFormVisible(true);
+    }
+  };
+
+  const handleDeleteItem = (item: WardrobeItem) => {
+    Alert.alert(
+      "Delete Item",
+      "Are you sure you want to delete this item?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => confirmDeleteItem(item) }
+      ]
+    );
+  };
+
+  const confirmDeleteItem = async (item: WardrobeItem, silent: boolean = false) => {
+    try {
+      if (!item || !item.id || !item.userId) {
+        if (!silent) Alert.alert("Error", "Invalid item data.");
+        return;
+      }
+      await WardrobeService.deleteWardrobeItem(item.id);
+      if (!silent) Alert.alert("Success", "Item deleted.");
+    } catch (error) {
+      if (!silent) Alert.alert("Error", "Could not delete item.");
+      console.error("Error deleting item:", error);
+    }
+  };
+  
+  const handleItemPress = (item: WardrobeItem) => {
+    if (isSelectionMode) {
+      const isSelected = selectedItems.some(selected => selected.id === item.id);
+      if (isSelected) {
+        setSelectedItems(selectedItems.filter(selected => selected.id !== item.id));
+      } else {
+        setSelectedItems([...selectedItems, item]);
+      }
+    } else {
+      setSelectedItem(item);
+      setImageToAdd(item.imageUrl);
+      setIsFormVisible(true);
+    }
+  };
+
+  const handleItemLongPress = undefined;
+
+  const handleDeleteSelectedItems = async () => {
+    if (selectedItems.length === 0) return;
+    Alert.alert(
+      'Delete Items',
+      `Are you sure you want to delete ${selectedItems.length} item${selectedItems.length > 1 ? 's' : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            for (const item of selectedItems) {
+              await confirmDeleteItem(item, true); // silent mode
+            }
+            setSelectedItems([]);
+            setIsSelectionMode(false);
+            Alert.alert('Success', `${selectedItems.length} item${selectedItems.length > 1 ? 's' : ''} deleted.`);
+          } catch (error) {
+            Alert.alert('Error', 'Could not delete all selected items.');
+          }
+        }}
+      ]
+    );
+  };
+
+  const handleCreateOutfit = () => {
+    if (selectedItems.length === 0) {
+      Alert.alert('No Items Selected', 'Please select at least one item to create an outfit.');
+      return;
+    }
+    navigation.navigate('OutfitCreation', {
+      selectedItems: selectedItems
+    });
+    setIsSelectionMode(false);
+    setSelectedItems([]);
+  };
+
+  const renderCategoryTab = ({ item }: { item: typeof CATEGORIES[0] }) => (
+    <TouchableOpacity
+      style={[
+        styles.categoryTab,
+        selectedCategory === item.key && styles.categoryTabActive
+      ]}
+      onPress={() => setSelectedCategory(item.key)}
+    >
+      <Ionicons 
+        name={item.icon as any} 
+        size={20} 
+        color={selectedCategory === item.key ? Colors.primary : Colors.textSecondary} 
+      />
+      <Text style={[
+        styles.categoryTabText,
+        selectedCategory === item.key && styles.categoryTabTextActive
+      ]}>
+        {item.label}
+      </Text>
+    </TouchableOpacity>
+  );
+
+  const renderItem = ({ item }: { item: WardrobeItem }) => {
+    if (!item || !item.id || !item.name || !item.brand || !item.imageUrl) return null;
+    const isSelected = isSelectionMode && selectedItems.some(selected => selected.id === item.id);
+    return (
+      <TouchableOpacity
+        style={[
+          styles.itemContainer,
+          isSelected && styles.selectedItemContainer
+        ]}
+        onPress={() => handleItemPress(item)}
+        disabled={loading}
+      >
+        <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+        <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.itemBrand} numberOfLines={1}>{item.brand}</Text>
+        {item.subcategory && (
+          <Text style={styles.itemSubcategory} numberOfLines={1}>{item.subcategory}</Text>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const renderSectionHeader = (category: string) => {
+    const categoryInfo = CATEGORIES.find(cat => cat.key === category);
+    if (!categoryInfo || category === 'all') return null;
+    
+    const categoryItems = items.filter(item => item.category === category);
+    if (categoryItems.length === 0) return null;
+
+    return (
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionHeaderContent}>
+          <Ionicons name={categoryInfo.icon as any} size={24} color={Colors.primary} />
+          <Text style={styles.sectionTitle}>{categoryInfo.label}</Text>
+          <Text style={styles.sectionCount}>({categoryItems.length})</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderSectionedItems = () => {
+    if (selectedCategory !== 'all') {
+      return (
+        <FlatList
+          data={filteredItems}
+          renderItem={renderItem}
+          keyExtractor={item => item?.id || Math.random().toString()}
+          numColumns={2}
+          contentContainerStyle={[
+            styles.listContainer,
+            filteredItems.length === 0 && styles.emptyListContainer
+          ]}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="shirt-outline" size={64} color={Colors.textSecondary} />
+              <Text style={styles.emptyText}>No {selectedCategory} found</Text>
+              <Text style={styles.emptySubtext}>Add some {selectedCategory} to your wardrobe.</Text>
+            </View>
+          }
+        />
+      );
+    }
+
+    // Group filteredItems by category for "All" view in the correct order
+    const categoryOrder = ['tops', 'bottoms', 'shoes', 'accessories', 'outerwear'];
+    const groupedItems = categoryOrder.map(category => {
+      const categoryItems = filteredItems.filter(item => item.category === category);
+      return { category, items: categoryItems };
+    }).filter(group => group.items.length > 0);
+
+    if (groupedItems.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="shirt-outline" size={64} color={Colors.textSecondary} />
+          <Text style={styles.emptyText}>Your wardrobe is empty</Text>
+          <Text style={styles.emptySubtext}>Add items using the camera or gallery.</Text>
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView 
+        style={styles.scrollContainer} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContentContainer}
+      >
+        {groupedItems.map(({ category, items: categoryItems }) => (
+          <View key={category} style={styles.categorySection}>
+            {renderSectionHeader(category)}
+            <View style={styles.categoryGrid}>
+              {categoryItems.map((item, idx) => (
+                <View key={item.id || `item-${category}-${idx}`} style={styles.itemWrapper}>
+                  {renderItem({ item })}
+                </View>
+              ))}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    );
+  };
+
+  const renderSelectionModeBar = () => {
+    const numSelected = selectedItems.length;
+    return (
+      <View style={styles.selectionModeBar}>
+        <Text style={styles.selectionModeText} numberOfLines={1}>
+          {numSelected} selected
+        </Text>
+        <View style={styles.selectionModeActions}>
+          <TouchableOpacity
+            style={styles.rubbishBinButton}
+            onPress={() => {
+              if (selectedItems.length > 0) {
+                handleDeleteSelectedItems();
+              } else {
+                Alert.alert('No items selected', 'Tap an item to select it for deletion.');
+              }
+            }}
+            activeOpacity={selectedItems.length > 0 ? 0.7 : 1}
+          >
+            <Ionicons name="trash" size={28} color={selectedItems.length === 0 ? Colors.textSecondary : Colors.error} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.createOutfitButton}
+            onPress={handleCreateOutfit}
+            disabled={selectedItems.length === 0}
+          >
+            <Ionicons name="shirt" size={24} color={selectedItems.length === 0 ? Colors.textSecondary : Colors.text} />
+            <Text style={[styles.createOutfitText, selectedItems.length === 0 && { color: Colors.textSecondary }]}>Create Outfit</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {/* Custom header with title and icons in a single row */}
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>Wardrobe</Text>
+        <View style={styles.headerIconsRow}>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => setShowSearch(!showSearch)}>
+            <Ionicons name={showSearch ? "close" : "search-outline"} size={26} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={handleOpenNativeCamera}>
+            <Ionicons name="camera-outline" size={26} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={handleAddItemFromLibrary}>
+            <Ionicons name="images-outline" size={26} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerIconButton} onPress={() => {
+            setIsSelectionMode(!isSelectionMode);
+            if (!isSelectionMode) setSelectedItems([]);
+          }}>
+            <Ionicons name={isSelectionMode ? "close-circle" : "shirt-outline"} size={26} color={isSelectionMode ? Colors.error : Colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Category tabs directly below header */}
+      <View style={styles.categoryTabsWrapper}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabsContainer}>
+          {CATEGORIES.map((cat) => (
+            <View key={cat.key}>
+              {renderCategoryTab({ item: cat })}
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Optional: Search bar below category tabs */}
+      {showSearch && (
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search wardrobe..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor={Colors.textSecondary}
+          />
+          <TouchableOpacity style={styles.clearSearchButton} onPress={() => setSearchQuery('')}>
+            <Ionicons name="close" size={18} color={Colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Selection mode bar */}
+      {isSelectionMode && renderSelectionModeBar()}
+
+      {/* Main content */}
+      <View style={styles.contentContainer}>
+        {loading ? (
+          <ActivityIndicator size="large" color={Colors.primary} style={{ flex: 1 }} />
+        ) : (
+          renderSectionedItems()
+        )}
+      </View>
+
+      {isFormVisible && imageToAdd && (
+        <Modal
+          animationType="slide"
+          transparent={false}
+          visible={isFormVisible}
+          onRequestClose={() => {
+            setIsFormVisible(false);
+            setSelectedItem(null);
+            setImageToAdd(null);
+          }}
+        >
+          <WardrobeItemForm
+            imageUri={imageToAdd}
+            existingItem={selectedItem || undefined}
+            onSave={handleSaveItem}
+            onCancel={() => {
+              setIsFormVisible(false);
+              setSelectedItem(null);
+              setImageToAdd(null);
+            }}
+            saving={saving}
+          />
+        </Modal>
+      )}
+
+      {saving && (
+        <View style={styles.savingOverlay}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.savingText}>Saving to wardrobe...</Text>
+        </View>
+      )}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { 
+    flex: 1, 
+    backgroundColor: Colors.background 
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 8,
+    backgroundColor: Colors.background,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  headerIconsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIconButton: {
+    marginLeft: 12,
+    padding: 4,
+  },
+  categoryTabsWrapper: {
+    backgroundColor: Colors.background,
+    paddingBottom: 8,
+  },
+  categoryTabsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    gap: 8,
+  },
+  contentContainer: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingTop: 8,
+  },
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  searchInput: {
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 12,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: Colors.text,
+        flexDirection: 'row', 
+        alignItems: 'center', 
+  },
+  clearSearchButton: {
+    position: 'absolute',
+    right: 15,
+    top: 15,
+    padding: 5,
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    paddingBottom: 20,
+  },
+    listContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+  },
+  sectionHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    marginBottom: 10,
+  },
+  sectionHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginLeft: 8,
+  },
+  sectionCount: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginLeft: 8,
+  },
+  categorySection: {
+    marginBottom: 20,
+  },
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 20,
+  },
+  itemWrapper: {
+    width: '50%',
+    padding: 6,
+    },
+    itemContainer: { 
+        backgroundColor: Colors.backgroundCard, 
+        borderRadius: 12, 
+    padding: 12, 
+        alignItems: 'center',
+    height: 200,
+  },
+  itemImage: { 
+    width: '100%', 
+    height: 120, 
+    borderRadius: 8 
+  },
+  itemName: { 
+    marginTop: 8, 
+    fontWeight: 'bold', 
+    color: Colors.text, 
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  itemBrand: { 
+    color: Colors.textSecondary, 
+    fontSize: 12, 
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  itemSubcategory: {
+    color: Colors.textSecondary,
+    fontSize: 10,
+    marginTop: 2,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+    deleteButton: { 
+        position: 'absolute', 
+        top: 5, 
+        right: 5, 
+        backgroundColor: 'rgba(0,0,0,0.5)', 
+        padding: 5, 
+        borderRadius: 15,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        alignSelf: 'center',
+        width: '100%',
+        height: '100%',
+        marginTop: 0,
+    },
+    emptyText: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: Colors.text,
+        marginTop: 16,
+        textAlign: 'center',
+    },
+    emptySubtext: {
+        fontSize: 14,
+        color: Colors.textSecondary,
+        marginTop: 8,
+        textAlign: 'center',
+    },
+  emptyListContainer: {
+    paddingBottom: 20,
+  },
+  selectedItemContainer: {
+    borderColor: Colors.primary,
+    borderWidth: 4,
+    backgroundColor: Colors.backgroundCard,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+  },
+  selectionDotRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 4,
+    gap: 6,
+  },
+  selectionDotDelete: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.error,
+    marginHorizontal: 2,
+    borderWidth: 2,
+    borderColor: Colors.background,
+  },
+  selectionDotOutfit: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.primary,
+    marginHorizontal: 2,
+    borderWidth: 2,
+    borderColor: Colors.background,
+  },
+  selectionModeIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    padding: 10,
+    backgroundColor: Colors.backgroundCard,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  selectionModeText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+    flexShrink: 1,
+    marginRight: 8,
+    minWidth: 120,
+  },
+  selectionModeActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  selectionModeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.backgroundCard,
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    flexWrap: 'wrap',
+  },
+  deleteSelectedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.error,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginLeft: 10,
+  },
+  deleteSelectedText: {
+    color: Colors.textInverse,
+    fontWeight: 'bold',
+    marginLeft: 6,
+  },
+  categoryTab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 12,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundCard,
+  },
+  categoryTabActive: {
+    backgroundColor: Colors.primary,
+  },
+  categoryTabText: {
+    marginLeft: 6,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  categoryTabTextActive: {
+    color: Colors.text,
+  },
+  savingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 100,
+  },
+  savingText: {
+    color: Colors.primary,
+    fontSize: 18,
+    marginTop: 12,
+    fontWeight: 'bold',
+  },
+  createOutfitContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: Colors.backgroundCard,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
+  },
+  createOutfitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+  },
+  createOutfitText: {
+    marginLeft: 12,
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.text,
+  },
+  rubbishBinButton: {
+    marginLeft: 8,
+    backgroundColor: Colors.backgroundCard,
+    borderRadius: 20,
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.error,
+  },
+});

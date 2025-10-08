@@ -1,3 +1,5 @@
+// App entry point
+
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -12,19 +14,21 @@ import AuthScreen from './src/screens/AuthScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import CameraScreen from './src/screens/CameraScreen';
 import WardrobeScreen from './src/screens/WardrobeScreen';
-import ChatScreen from './src/screens/ChatScreen';
-import OutfitsScreen from './src/screens/LikedOutfitsScreen';
-import OutfitSwiperScreen from './src/screens/OutfitSwiperScreen';
 import OutfitCreationScreen from './src/screens/OutfitCreationScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import BrandSelectionScreen from './src/screens/BrandSelectionScreen';
-import StyleMateScreen from './src/screens/StyleMateScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
 import PinterestBoardScreen from './src/screens/PinterestBoardScreen';
+import StyleCheckScreen from './src/screens/StyleCheckScreen';
+import AvatarSetupScreen from './src/screens/AvatarSetupScreen';
+import AvatarViewScreen from './src/screens/AvatarViewScreen';
+import ShoppingAssistantScreen from './src/screens/ShoppingAssistantScreen';
+import StyleSwipeScreen from './src/screens/StyleSwipeScreen';
 
 // Import services and context
 import { AuthService } from './src/services/authService';
 import { UserProvider, useUser } from './src/contexts/UserContext';
+import { AvatarProvider } from './src/contexts/AvatarContext';
 import { Colors } from './src/constants/colors';
 
 const Tab = createBottomTabNavigator();
@@ -43,8 +47,6 @@ function MainTabs() {
             iconName = focused ? 'shirt' : 'shirt-outline';
           } else if (route.name === 'Outfits') {
             iconName = focused ? 'heart' : 'heart-outline';
-          } else if (route.name === 'Chat') {
-            iconName = focused ? 'chatbubble' : 'chatbubble-outline';
           } else if (route.name === 'Profile') {
             iconName = focused ? 'person' : 'person-outline';
           } else {
@@ -75,7 +77,7 @@ function MainTabs() {
         },
         headerTitleStyle: {
           color: Colors.text,
-          fontWeight: 'bold',
+          fontWeight: '600',
         },
         headerTintColor: Colors.primary,
       })}
@@ -83,45 +85,41 @@ function MainTabs() {
       <Tab.Screen 
         name="Home" 
         component={HomeScreen}
-        options={{ title: 'Home' }}
+        options={{ 
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="home" size={size} color={color} />
+          ),
+        }}
       />
       <Tab.Screen 
         name="Wardrobe" 
-        component={WardrobeScreenWrapper}
-        options={{ title: 'Wardrobe' }}
-      />
-      <Tab.Screen 
-        name="Outfits" 
-        component={OutfitsScreen}
-        options={{ title: 'Outfits' }}
-      />
-      <Tab.Screen 
-        name="Chat" 
-        component={ChatScreen}
-        options={{ title: 'Style Chat' }}
+        component={WardrobeScreen}
+        options={{ 
+          title: 'Wardrobe',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="shirt" size={size} color={color} />
+          ),
+        }}
       />
       <Tab.Screen 
         name="Profile" 
         component={ProfileScreen}
-        options={{ title: 'Profile' }}
+        options={{ 
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="person" size={size} color={color} />
+          ),
+        }}
       />
     </Tab.Navigator>
   );
-}
-
-function WardrobeScreenWrapper(props: any) {
-  return <WardrobeScreen {...props} />;
-}
-
-function OutfitCreationScreenWrapper(props: any) {
-  return <OutfitCreationScreen {...props} />;
 }
 
 function AppNavigator() {
   const { user, loading } = useUser();
 
   if (loading) {
-    // Show a proper loading indicator instead of a blank screen
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background }}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -143,9 +141,7 @@ function AppNavigator() {
           <Stack.Screen
             name="MainTabs"
             component={MainTabs}
-            options={{
-              headerShown: false,
-            }}
+            options={{ headerShown: false }}
           />
           <Stack.Screen 
             name="Camera" 
@@ -156,16 +152,8 @@ function AppNavigator() {
             }}
           />
           <Stack.Screen 
-            name="OutfitSwiper" 
-            component={OutfitSwiperScreen}
-            options={{
-              headerShown: false,
-              presentation: 'modal',
-            }}
-          />
-          <Stack.Screen 
             name="OutfitCreation" 
-            component={OutfitCreationScreenWrapper}
+            component={OutfitCreationScreen}
             options={{
               headerShown: false,
               presentation: 'modal',
@@ -176,15 +164,6 @@ function AppNavigator() {
             component={BrandSelectionScreen}
             options={{
               headerShown: false,
-              presentation: 'modal',
-            }}
-          />
-          <Stack.Screen 
-            name="StyleMate" 
-            component={StyleMateScreen}
-            options={{
-              headerShown: true,
-              title: 'StyleMate AI',
               presentation: 'modal',
             }}
           />
@@ -211,7 +190,87 @@ function AppNavigator() {
               headerTintColor: Colors.primary,
               headerTitleStyle: {
                 color: Colors.text,
-                fontWeight: 'bold',
+                fontWeight: '600',
+              },
+            }}
+          />
+          <Stack.Screen
+            name="AvatarSetup"
+            component={AvatarSetupScreen as any}
+            options={{
+              headerShown: true,
+              title: 'Create Your Avatar',
+              headerStyle: {
+                backgroundColor: Colors.background,
+              },
+              headerTintColor: Colors.primary,
+              headerTitleStyle: {
+                color: Colors.text,
+                fontWeight: '600',
+              },
+            }}
+          />
+          <Stack.Screen
+            name="AvatarView"
+            component={AvatarViewScreen as any}
+            options={{
+              headerShown: true,
+              title: 'My Avatar',
+              headerStyle: {
+                backgroundColor: Colors.background,
+              },
+              headerTintColor: Colors.primary,
+              headerTitleStyle: {
+                color: Colors.text,
+                fontWeight: '600',
+              },
+            }}
+          />
+          <Stack.Screen
+            name="ShoppingAssistant"
+            component={ShoppingAssistantScreen as any}
+            options={{
+              headerShown: true,
+              title: 'Shop',
+              headerStyle: {
+                backgroundColor: Colors.background,
+              },
+              headerTintColor: Colors.primary,
+              headerTitleStyle: {
+                color: Colors.text,
+                fontWeight: '600',
+              },
+            }}
+          />
+          <Stack.Screen
+            name="StyleSwipe"
+            component={StyleSwipeScreen as any}
+            options={{
+              headerShown: true,
+              title: 'AI Stylist',
+              headerStyle: {
+                backgroundColor: Colors.background,
+              },
+              headerTintColor: Colors.primary,
+              headerTitleStyle: {
+                color: Colors.text,
+                fontWeight: '600',
+              },
+            }}
+          />
+          <Stack.Screen
+            name="StyleCheck"
+            component={StyleCheckScreen as any}
+            options={{
+              headerShown: true,
+              title: 'Style Check',
+              headerStyle: {
+                backgroundColor: Colors.background,
+              },
+              headerTintColor: Colors.primary,
+              headerTitleStyle: {
+                color: Colors.text,
+                fontWeight: '600',
               },
             }}
           />
@@ -225,10 +284,12 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <UserProvider>
-        <NavigationContainer>
-          <StatusBar style="light" />
-          <AppNavigator />
-        </NavigationContainer>
+        <AvatarProvider>
+          <NavigationContainer>
+            <StatusBar style="light" />
+            <AppNavigator />
+          </NavigationContainer>
+        </AvatarProvider>
       </UserProvider>
     </SafeAreaProvider>
   );

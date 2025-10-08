@@ -1,30 +1,27 @@
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  updateProfile,
-  User as FirebaseUser,
-  onAuthStateChanged,
-} from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { supabase } from './supabase';
 import { User, UserPreferences, BrandPreferences, StyleProfile, Subscription } from '../types';
 
 export class AuthService {
-  static async signUp(email: string, password: string, displayName: string): Promise<FirebaseUser> {
+  static async signUp(email: string, password: string, displayName: string): Promise<any> {
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            display_name: displayName,
+          },
+        },
+      });
 
-      // Update profile with display name
-      await updateProfile(firebaseUser, { displayName });
+      if (error) throw error;
+      if (!data.user) throw new Error('Sign up failed');
 
-      // Create user document in Firestore
+      // Create user document in Supabase
       const userData: User = {
-        id: firebaseUser.uid,
-        email: firebaseUser.email!,
+        id: data.user.id,
+        email: data.user.email!,
         displayName,
-        ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
         createdAt: new Date(),
         updatedAt: new Date(),
         preferences: {
@@ -89,19 +86,32 @@ export class AuthService {
         },
       };
       
-      await setDoc(doc(db, 'users', firebaseUser.uid), userData);
-      return firebaseUser;
+      const { error: dbError } = await supabase
+        .from('users')
+        .insert([{
+          id: userData.id,
+          email: userData.email,
+          display_name: userData.displayName,
+          created_at: userData.createdAt.toISOString(),
+          updated_at: userData.updatedAt.toISOString(),
+          preferences: userData.preferences,
+          style_profile: userData.styleProfile,
+          brand_preferences: userData.brandPreferences,
+          subscription: userData.subscription,
+        }]);
+
+      if (dbError) {
+        console.warn('Failed to create user profile:', dbError.message);
+      }
+
+      return data.user;
     } catch (error: any) {
       // Provide more specific error messages
-      if (error.code === 'auth/email-already-in-use') {
+      if (error.message?.includes('already registered')) {
         throw new Error('An account with this email already exists. Please sign in instead.');
-      } else if (error.code === 'auth/user-not-found') {
-        throw new Error('No account found with this email. Please check your email or sign up.');
-      } else if (error.code === 'auth/wrong-password') {
-        throw new Error('Incorrect password. Please try again.');
-      } else if (error.code === 'auth/invalid-email') {
+      } else if (error.message?.includes('Invalid email')) {
         throw new Error('Please enter a valid email address.');
-      } else if (error.code === 'auth/weak-password') {
+      } else if (error.message?.includes('Password')) {
         throw new Error('Password should be at least 6 characters long.');
       } else {
         throw new Error(error.message || 'Authentication failed. Please try again.');
@@ -109,18 +119,21 @@ export class AuthService {
     }
   }
 
-  static async signIn(email: string, password: string): Promise<FirebaseUser> {
+  static async signIn(email: string, password: string): Promise<any> {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      return userCredential.user;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+      return data.user;
     } catch (error: any) {
       // Provide more specific error messages
-      if (error.code === 'auth/user-not-found') {
-        throw new Error('No account found with this email. Please check your email or sign up.');
-      } else if (error.code === 'auth/wrong-password') {
-        throw new Error('Incorrect password. Please try again.');
-      } else if (error.code === 'auth/invalid-email') {
-        throw new Error('Please enter a valid email address.');
+      if (error.message?.includes('Invalid login credentials')) {
+        throw new Error('Invalid email or password. Please try again.');
+      } else if (error.message?.includes('Email not confirmed')) {
+        throw new Error('Please verify your email before signing in.');
       } else {
         throw new Error(error.message || 'Authentication failed. Please try again.');
       }
@@ -129,7 +142,8 @@ export class AuthService {
 
   static async logout(): Promise<void> {
     try {
-      await signOut(auth);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
     } catch (error: any) {
       throw new Error(error.message);
     }
@@ -137,11 +151,32 @@ export class AuthService {
 
   static async getUserProfile(userId: string): Promise<User | null> {
     try {
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      if (userDoc.exists()) {
-        return userDoc.data() as User;
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching user profile:", error);
+        return null;
       }
-      return null;
+      
+      // Map snake_case from Supabase to camelCase for TypeScript
+      const user: User = {
+        id: data.id,
+        email: data.email,
+        displayName: data.display_name,
+        photoUrl: data.photo_url,
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at),
+        preferences: data.preferences,
+        styleProfile: data.style_profile,
+        brandPreferences: data.brand_preferences,
+        subscription: data.subscription,
+      };
+      
+      return user;
     } catch (error) {
       console.error("Error fetching user profile:", error);
       return null;
@@ -150,11 +185,11 @@ export class AuthService {
 
   static async getCurrentUser(): Promise<User | null> {
     try {
-      const firebaseUser = auth.currentUser;
-      if (!firebaseUser) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
         return null;
       }
-      return await AuthService.getUserProfile(firebaseUser.uid);
+      return await AuthService.getUserProfile(user.id);
     } catch (error) {
       console.error("Error getting current user:", error);
       return null;
@@ -163,11 +198,24 @@ export class AuthService {
 
   static async updateUserProfile(userId: string, updates: Partial<User>): Promise<void> {
     try {
-      const userRef = doc(db, 'users', userId);
-      await setDoc(userRef, {
-        ...updates,
-        updatedAt: new Date(),
-      }, { merge: true });
+      // Map camelCase to snake_case for Supabase
+      const mappedUpdates: any = {
+        updated_at: new Date().toISOString(),
+      };
+      
+      if (updates.displayName !== undefined) mappedUpdates.display_name = updates.displayName;
+      if (updates.photoUrl !== undefined) mappedUpdates.photo_url = updates.photoUrl;
+      if (updates.preferences !== undefined) mappedUpdates.preferences = updates.preferences;
+      if (updates.styleProfile !== undefined) mappedUpdates.style_profile = updates.styleProfile;
+      if (updates.brandPreferences !== undefined) mappedUpdates.brand_preferences = updates.brandPreferences;
+      if (updates.subscription !== undefined) mappedUpdates.subscription = updates.subscription;
+      
+      const { error } = await supabase
+        .from('users')
+        .update(mappedUpdates)
+        .eq('id', userId);
+
+      if (error) throw error;
     } catch (error: any) {
       console.warn('Failed to update user profile:', error.message);
       throw new Error(error.message);
@@ -176,11 +224,15 @@ export class AuthService {
 
   static async updateUserPreferences(userId: string, preferences: Partial<UserPreferences>): Promise<void> {
     try {
-      const userRef = doc(db, 'users', userId);
-      await setDoc(userRef, {
-        preferences: preferences,
-        updatedAt: new Date(),
-      }, { merge: true });
+      const { error } = await supabase
+        .from('users')
+        .update({
+          preferences: preferences,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+
+      if (error) throw error;
     } catch (error: any) {
       console.warn('Failed to update user preferences:', error.message);
       throw new Error(error.message);
@@ -189,11 +241,15 @@ export class AuthService {
 
   static async updateBrandPreferences(userId: string, brandPreferences: BrandPreferences): Promise<void> {
     try {
-      const userRef = doc(db, 'users', userId);
-      await setDoc(userRef, {
-        brandPreferences: brandPreferences,
-        updatedAt: new Date(),
-      }, { merge: true });
+      const { error } = await supabase
+        .from('users')
+        .update({
+          brand_preferences: brandPreferences,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId);
+
+      if (error) throw error;
     } catch (error: any) {
       console.warn('Failed to update brand preferences:', error.message);
       throw new Error(error.message);
@@ -201,19 +257,18 @@ export class AuthService {
   }
 
   static onAuthStateChange(callback: (user: User | null) => void): () => void {
-    return onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        console.log('Firebase user authenticated:', firebaseUser.uid);
-        let userProfile = await this.getUserProfile(firebaseUser.uid);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        console.log('Supabase user authenticated:', session.user.id);
+        let userProfile = await this.getUserProfile(session.user.id);
         
         // If user profile doesn't exist, create a basic one
         if (!userProfile) {
           console.log('Creating user profile for existing user');
           const basicUserData: User = {
-            id: firebaseUser.uid,
-            email: firebaseUser.email!,
-            displayName: firebaseUser.displayName || 'User',
-            ...(firebaseUser.photoURL && { photoURL: firebaseUser.photoURL }),
+            id: session.user.id,
+            email: session.user.email!,
+            displayName: session.user.user_metadata?.display_name || 'User',
             createdAt: new Date(),
             updatedAt: new Date(),
             preferences: {
@@ -279,9 +334,26 @@ export class AuthService {
           };
           
           try {
-            await setDoc(doc(db, 'users', firebaseUser.uid), basicUserData);
-            userProfile = basicUserData;
-            console.log('User profile created successfully');
+            const { error } = await supabase
+              .from('users')
+              .insert([{
+                id: basicUserData.id,
+                email: basicUserData.email,
+                display_name: basicUserData.displayName,
+                created_at: basicUserData.createdAt.toISOString(),
+                updated_at: basicUserData.updatedAt.toISOString(),
+                preferences: basicUserData.preferences,
+                style_profile: basicUserData.styleProfile,
+                brand_preferences: basicUserData.brandPreferences,
+                subscription: basicUserData.subscription,
+              }]);
+            
+            if (!error) {
+              userProfile = basicUserData;
+              console.log('User profile created successfully');
+            } else {
+              console.error('Failed to create user profile:', error);
+            }
           } catch (error) {
             console.error('Failed to create user profile:', error);
           }
@@ -290,9 +362,14 @@ export class AuthService {
         console.log('Returning user profile:', userProfile ? userProfile.email : 'null');
         callback(userProfile);
       } else {
-        console.log('No Firebase user authenticated');
+        console.log('No Supabase user authenticated');
         callback(null);
       }
     });
+
+    // Return unsubscribe function
+    return () => {
+      subscription.unsubscribe();
+    };
   }
-} 
+}

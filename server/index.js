@@ -23,21 +23,58 @@ const PORT = process.env.PORT || 3000;
  */
 
 // Initialize Firebase Admin
+let db;
+try {
+  console.log('🔥 Initializing Firebase...');
 if (!admin.apps.length) {
+    const serviceAccount = require('./stylematev2-firebase-adminsdk-fbsvc-385a67ccdb.json');
+    
   admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
+      credential: admin.credential.cert(serviceAccount),
     databaseURL: "https://stylematev2.firebaseio.com"
   });
+    console.log('✅ Firebase initialized successfully');
+  }
+  db = admin.firestore();
+  console.log('✅ Firestore connected');
+} catch (error) {
+  console.error('❌ Firebase initialization failed:', error.message);
+  console.log('⚠️ Server will continue without Firebase (some features may not work)');
+  db = null;
+}
+const shoppingCollection = db ? db.collection('shopping_products') : null;
+
+// Initialize Google Vision API client (optional)
+let visionClient = null;
+try {
+  visionClient = new vision.ImageAnnotatorClient({
+    // Use default credentials or set GOOGLE_APPLICATION_CREDENTIALS env var
+  });
+  console.log('✅ Google Vision API initialized successfully');
+} catch (error) {
+  console.log('⚠️ Google Vision API not available, using fallback analysis');
+  console.log('To enable Google Vision, set GOOGLE_APPLICATION_CREDENTIALS environment variable');
 }
 
-const db = admin.firestore();
+// Optional image processing lib (for skin tone estimation)
+let Jimp = null;
+try {
+  // eslint-disable-next-line global-require
+  Jimp = require('jimp');
+} catch (e) {
+  Jimp = null;
+}
 
-// Use shopping_products as the single source of truth for all scraped products
-const shoppingCollection = db.collection('shopping_products');
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.log('Unhandled Rejection at:', promise, 'reason:', reason);
+  // Don't exit the process, just log the error
+});
 
-// Enable CORS
+// Enable CORS and JSON parsing
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Headers to mimic a real browser
 const HEADERS = {
@@ -49,88 +86,21 @@ const HEADERS = {
   'Upgrade-Insecure-Requests': '1',
 };
 
-// Google Vision client setup
-const visionClient = new vision.ImageAnnotatorClient({
-  keyFilename: path.join(__dirname, 'google-vision-key.json'),
-});
+// Google Vision client setup (will be initialized later)
 
-// Helper function to clean price
-function cleanPrice(priceStr) {
-  if (!priceStr) return 0;
-  try {
-    return parseFloat(priceStr.replace(/[^0-9.]/g, ''));
-  } catch (error) {
-    console.warn('Invalid price format:', priceStr);
-    return 0;
-  }
-}
+// Category classification configuration
+const CATEGORY_REGEX = [
+  { category: 'tops', regex: /\b(shirt|t-shirt|tee|polo|knit|sweat|jumper|crew|henley|singlet|tank|top)\b/ },
+  { category: 'bottoms', regex: /\b(jogger pant|track pant|chino|trouser|pant|pants|jean|short|shorts|suit)\b/ },
+  { category: 'outerwear', regex: /\b(jacket|coat|blazer|overshirt|duffle)\b/ },
+  { category: 'shoes', regex: /\b(shoe|sneaker|boot|loafer|slide|thong)\b/ },
+  { category: 'accessories', regex: /\b(belt|bag|wallet|tie|sock|scarf|hat)\b/ },
+];
 
-// Add at the top, after imports
-const CATEGORY_KEYWORDS = {
-  tops: ['shirt', 't-shirt', 'tee', 'polo', 'knit', 'sweat', 'jumper', 'crew', 'henley', 'singlet', 'tank', 'top'],
-  bottoms: ['pant', 'pants', 'jean', 'short', 'trouser', 'chino', 'track', 'jogger', 'suit'],
-  shoes: ['shoe', 'sneaker', 'boot', 'loafer', 'slide', 'thong'],
-  outerwear: ['jacket', 'coat', 'blazer', 'overshirt', 'duffle'],
-  accessories: ['belt', 'bag', 'duffle', 'wallet', 'tie', 'sock', 'scarf', 'hat']
-};
+// Color extraction configuration
+const COLORS = ['black', 'white', 'blue', 'red', 'green', 'yellow', 'purple', 'pink', 'orange', 'brown', 'gray', 'grey', 'navy', 'beige', 'cream'];
 
-function classifyCategory(name, url, description = '') {
-  const text = `${name} ${description} ${url}`.toLowerCase();
-  // Priority order: tops before bottoms to avoid 'short' in 'Short Sleeve Shirt'
-  const CATEGORY_REGEX = [
-    { category: 'tops', regex: /\b(shirt|t-shirt|tee|polo|knit|sweat|jumper|crew|henley|singlet|tank|top)\b/ },
-    { category: 'bottoms', regex: /\b(jogger pant|track pant|chino|trouser|pant|pants|jean|short|shorts|suit)\b/ }, // match both 'short' and 'shorts'
-    { category: 'outerwear', regex: /\b(jacket|coat|blazer|overshirt|duffle)\b/ },
-    { category: 'shoes', regex: /\b(shoe|sneaker|boot|loafer|slide|thong)\b/ },
-    { category: 'accessories', regex: /\b(belt|bag|wallet|tie|sock|scarf|hat)\b/ },
-  ];
-  for (const { category, regex } of CATEGORY_REGEX) {
-    if (regex.test(text)) {
-      return category;
-    }
-  }
-  // Log unknowns for review
-  console.warn(`[CategoryClassifier] Unknown category for product:`, { name, url, description });
-  return 'unknown';
-}
-
-// Helper function to extract color from name
-function extractColor(name) {
-  const nameLower = name.toLowerCase();
-  const colors = ['black', 'white', 'blue', 'red', 'green', 'yellow', 'purple', 'pink', 'orange', 'brown', 'gray', 'grey', 'navy', 'beige', 'cream'];
-  
-  for (const color of colors) {
-    if (nameLower.includes(color)) {
-      return color;
-    }
-  }
-  
-  return 'neutral';
-}
-
-// Utility: Download remote image and convert to base64
-async function remoteImageToBase64(url) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch image');
-    const buffer = await response.buffer();
-    return buffer.toString('base64');
-  } catch (error) {
-    console.error('Error converting remote image to base64:', error.message);
-    throw error;
-  }
-}
-
-// Hybrid color extraction utility (no OpenAI Vision)
-function getProductColor({ name, productUrl }) {
-  let color = extractColorFromUrl(productUrl) || extractColor(name);
-  if (!color || color === 'unknown' || color === 'neutral' || color === '') {
-    color = 'unknown';
-  }
-  return color;
-}
-
-// Add at the top, after imports
+// Country Road subcategory URLs
 const COUNTRY_ROAD_SUBCATEGORY_URLS = [
   'https://www.countryroad.co.nz/man-clothing-chinos/',
   'https://www.countryroad.co.nz/man-clothing-pants/',
@@ -148,334 +118,45 @@ const COUNTRY_ROAD_SUBCATEGORY_URLS = [
   'https://www.countryroad.co.nz/man-clothing-swimwear/',
 ];
 
-// Scraping function for Glassons with pagination
-async function scrapeGlassons() {
+// Utility functions
+const cleanPrice = (priceStr) => {
+  if (!priceStr) return 0;
   try {
-    console.log('Attempting to scrape Glassons with pagination...');
-    
-    const allProducts = [];
-    let page = 1;
-    let hasMorePages = true;
-    const maxPages = 10; // Safety limit to prevent infinite loops
-    
-    while (hasMorePages && page <= maxPages) {
-      const url = page === 1 
-        ? 'https://www.glassons.com/c/clothing'
-        : `https://www.glassons.com/c/clothing?page=${page}`;
-      
-      console.log(`Scraping Glassons page ${page}: ${url}`);
-      
-      try {
-        const response = await axios.get(url, {
-          headers: HEADERS,
-          timeout: 20000
-        });
-        
-        const $ = cheerio.load(response.data);
-        const products = [];
-        
-        // Try multiple selectors for Glassons
-        const productSelectors = [
-          '.product-item',
-          '.product-card',
-          '[data-product]',
-          '.product',
-          '.item',
-          '[class*="product"]',
-          '.product-grid-item',
-          '.product-list-item'
-        ];
-        
-        console.log(`Trying selectors for Glassons page ${page}...`);
-        
-        for (const selector of productSelectors) {
-          const elements = $(selector);
-          console.log(`Selector "${selector}" found ${elements.length} elements on page ${page}`);
-          
-          if (elements.length > 0) {
-            const elementArray = elements.toArray();
-            for (let idx = 0; idx < elementArray.length; idx++) {
-              const element = elementArray[idx];
-              try {
-                const $el = $(element);
-                
-                // Try multiple selectors for each field
-                const nameSelectors = [
-                  '.product-name',
-                  '.product-title',
-                  '.name',
-                  'h3',
-                  'h4',
-                  '.title',
-                  '[class*="name"]',
-                  '[class*="title"]'
-                ];
-                
-                const priceSelectors = [
-                  '.price',
-                  '.product-price',
-                  '[data-price]',
-                  '.cost',
-                  '[class*="price"]'
-                ];
-                
-                const imageSelectors = [
-                  'img[src]',
-                  'img[data-src]',
-                  'img[data-lazy-src]',
-                  'img[data-original]'
-                ];
-                
-                const linkSelectors = [
-                  'a[href]',
-                  '.product-link'
-                ];
-                
-                // Extract name
-                let name = '';
-                for (const nameSel of nameSelectors) {
-                  const nameEl = $el.find(nameSel).first();
-                  if (nameEl.length > 0) {
-                    name = nameEl.text().trim();
-                    if (name) break;
-                  }
-                }
-                
-                // Extract price
-                let priceText = '';
-                for (const priceSel of priceSelectors) {
-                  const priceEl = $el.find(priceSel).first();
-                  if (priceEl.length > 0) {
-                    priceText = priceEl.text().trim();
-                    if (priceText) break;
-                  }
-                }
-                
-                // Extract image
-                let imageUrl = '';
-                for (const imgSel of imageSelectors) {
-                  const imgEl = $el.find(imgSel).first();
-                  if (imgEl.length > 0) {
-                    imageUrl = imgEl.attr('src') || imgEl.attr('data-src') || imgEl.attr('data-lazy-src') || imgEl.attr('data-original');
-                    if (imageUrl) break;
-                  }
-                }
-                
-                // Extract product URL
-                let productUrl = '';
-                for (const linkSel of linkSelectors) {
-                  const linkEl = $el.find(linkSel).first();
-                  if (linkEl.length > 0) {
-                    productUrl = linkEl.attr('href');
-                    if (productUrl) break;
-                  }
-                }
-                
-                // Hybrid color extraction (no AI)
-                const detectedColor = getProductColor({ name, productUrl: productUrl });
-                
-                // Debug logging
-                if (name || priceText || imageUrl) {
-                  console.log(`Found potential Glassons product on page ${page}:`, { 
-                    name: name ? name.substring(0, 50) : 'No name', 
-                    priceText, 
-                    hasImage: !!imageUrl,
-                    hasUrl: !!productUrl,
-                    color: detectedColor
-                  });
-                }
-                
-                if (name && priceText) {
-                  const price = cleanPrice(priceText);
-                  const category = classifyCategory(name, productUrl || '', '');
-                  
-                  // Ensure URLs are absolute
-                  const fullImageUrl = imageUrl && !imageUrl.startsWith('http') ? `https://www.glassons.com${imageUrl}` : imageUrl;
-                  const fullProductUrl = productUrl && !productUrl.startsWith('http') ? `https://www.glassons.com${productUrl}` : productUrl;
-                  
-                  // Create a unique identifier based on name and color to prevent duplicates
-                  const uniqueId = `glassons-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${detectedColor}`;
-                  
-                  products.push({
-                    id: uniqueId,
-                    name: name,
-                    brand: 'Glassons',
-                    price: price,
-                    imageUrl: fullImageUrl || 'https://via.placeholder.com/300x400/CCCCCC/666666?text=Glassons+Product',
-                    purchaseUrl: fullProductUrl || '#',
-                    productUrl: fullProductUrl || '#',
-                    category: category,
-                    color: detectedColor,
-                    description: `${name} from Glassons`,
-                    materials: [],
-                    tags: ['glassons', category],
-                    retailer: { id: 'glassons', name: 'Glassons' },
-                    scrapedAt: new Date().toISOString()
-                  });
-                }
-              } catch (error) {
-                console.warn('Error parsing Glassons product on page ${page}:', error.message);
-              }
-            }
-            
-            if (products.length > 0) {
-              console.log(`Found ${products.length} products with selector "${selector}" on page ${page}`);
-              break; // Found products with this selector
-            }
-          }
-        }
-        
-        // Add products from this page to the total
-        allProducts.push(...products);
-        
-        // Check if there are more pages by looking for pagination elements
-        const nextPageElement = $('a[href*="page=' + (page + 1) + '"]');
-        const paginationInfo = $('.pagination-info, .results-count').text();
-        
-        console.log(`Page ${page} pagination info:`, paginationInfo);
-        console.log(`Next page element found:`, nextPageElement.length > 0);
-        
-        // If no products found or no next page link, stop pagination
-        if (products.length === 0 || nextPageElement.length === 0) {
-          hasMorePages = false;
-          console.log(`Stopping pagination at page ${page} - no more products or pages`);
-        } else {
-          page++;
-          // Add a small delay between requests to be respectful
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
-      } catch (error) {
-        console.warn(`Failed to scrape Glassons page ${page}:`, error.message);
-        hasMorePages = false;
-      }
-    }
-    
-    console.log(`Scraped ${allProducts.length} total products from Glassons across ${page - 1} pages`);
-    return allProducts;
+    return parseFloat(priceStr.replace(/[^0-9.]/g, ''));
   } catch (error) {
-    console.error('Error scraping Glassons:', error.message);
-    return [];
+    console.warn('Invalid price format:', priceStr);
+    return 0;
   }
-}
+};
 
-// Scraping function for Country Road with all subcategories and pagination
-async function scrapeCountryRoad() {
-  try {
-    console.log('Attempting to scrape Country Road with all subcategories and pagination...');
-    const allProducts = [];
-    for (const subcatUrl of COUNTRY_ROAD_SUBCATEGORY_URLS) {
-      console.log(`=== Scraping subcategory: ${subcatUrl} ===`);
-      for (let page = 1; page <= 7; page++) {
-        const url = page === 1 ? subcatUrl : `${subcatUrl}?src=i&page=${page}`;
-        console.log(`Scraping Country Road page ${page}: ${url}`);
-        try {
-          const response = await axios.get(url, {
-            headers: HEADERS,
-            timeout: 20000
-          });
-          const $ = cheerio.load(response.data);
-          const products = [];
-          const productSelectors = [
-            'section[data-type="ProductCard"]',
-            '[data-type="ProductCard"]',
-            '.product-card',
-            '.product-item'
-          ];
-          let foundAny = false;
-          for (const selector of productSelectors) {
-            const elements = $(selector);
-            if (elements.length > 0) {
-              foundAny = true;
-              const elementArray = elements.toArray();
-              for (let idx = 0; idx < elementArray.length; idx++) {
-                const element = elementArray[idx];
-                try {
-                  const $el = $(element);
-                  const nameElement = $el.find('h2 a[title]').first();
-                  const name = nameElement.attr('title') || nameElement.text().trim();
-                  const priceElement = $el.find('.price-display .value').first();
-                  const priceText = priceElement.text().trim();
-                  const imageElement = $el.find('img[src]').first();
-                  let imageUrl = imageElement.attr('src');
-                  if (imageUrl && !imageUrl.startsWith('http')) imageUrl = 'https://www.countryroad.co.nz' + imageUrl;
-                  const linkElement = $el.find('h2 a[href]').first();
-                  let productUrl = linkElement.attr('href');
-                  if (productUrl && !productUrl.startsWith('http')) productUrl = 'https://www.countryroad.co.nz' + productUrl;
-                  const color = getProductColor({ name, productUrl });
-                  if (name && priceText && imageUrl && productUrl) {
-                    const price = cleanPrice(priceText);
-                    const category = classifyCategory(name, productUrl || '', '');
-                    const uniqueId = crypto.createHash('md5').update(productUrl).digest('hex');
-                    products.push({
-                      id: uniqueId,
-                      name: name,
-                      brand: 'Country Road',
-                      price: price,
-                      imageUrl: imageUrl,
-                      purchaseUrl: productUrl,
-                      productUrl: productUrl,
-                      category: category,
-                      color: color,
-                      description: `${name} from Country Road`,
-                      materials: [],
-                      tags: ['country-road', category],
-                      retailer: { id: 'countryroad', name: 'Country Road' },
-                      scrapedAt: new Date().toISOString()
-                    });
-                    console.log(`Country Road product: ${name} | ID: ${uniqueId} | URL: ${productUrl}`);
-                  }
-                } catch (error) {
-                  console.warn('Error parsing Country Road product:', error.message);
-                }
-              }
-              if (products.length > 0) {
-                console.log(`Found ${products.length} products with selector "${selector}" on page ${page}`);
-                break; // Use first selector that finds products
-              }
-            }
-          }
-          if (products.length > 0) {
-            allProducts.push(...products);
-          }
-          if (!foundAny || products.length === 0) {
-            console.log(`No more products or selectors found on page ${page} for ${subcatUrl}`);
-            break;
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } catch (error) {
-          console.warn(`Failed to scrape Country Road page ${page}:`, error.message);
-          break;
-        }
-      }
+const classifyCategory = (name, url, description = '') => {
+  const text = `${name} ${description} ${url}`.toLowerCase();
+  for (const { category, regex } of CATEGORY_REGEX) {
+    if (regex.test(text)) {
+      return category;
     }
-    console.log(`Scraped ${allProducts.length} total products from Country Road (all subcategories)`);
-    const idSet = new Set();
-    let duplicateCount = 0;
-    for (const prod of allProducts) {
-      if (idSet.has(prod.id)) {
-        duplicateCount++;
-        console.warn(`Duplicate ID detected: ${prod.id} (${prod.name})`);
-      } else {
-        idSet.add(prod.id);
-      }
-    }
-    console.log(`Total unique products: ${idSet.size}, duplicates: ${duplicateCount}`);
-    return allProducts;
-  } catch (error) {
-    console.error('Error scraping Country Road:', error.message);
-    return [];
   }
-}
+  console.warn(`[CategoryClassifier] Unknown category for product:`, { name, url, description });
+  return 'unknown';
+};
 
-// Helper function to extract color from URL
-function extractColorFromUrl(url) {
+const extractColor = (name) => {
+  const nameLower = name.toLowerCase();
+  for (const color of COLORS) {
+    if (nameLower.includes(color)) {
+      return color;
+    }
+  }
+  return 'neutral';
+};
+
+const extractColorFromUrl = (url) => {
   if (!url) return 'unknown';
   
   const colorPatterns = [
-    /-(\w+)-(\d+)$/, // Matches patterns like "-navy-1234"
-    /color[=_-](\w+)/i, // Matches color parameters
-    /(\w+)-(\d+)$/ // Matches general patterns
+    /-(\w+)-(\d+)$/,
+    /color[=_-](\w+)/i,
+    /(\w+)-(\d+)$/
   ];
   
   for (const pattern of colorPatterns) {
@@ -489,7 +170,219 @@ function extractColorFromUrl(url) {
   }
   
   return 'unknown';
-}
+};
+
+const getProductColor = ({ name, productUrl }) => {
+  let color = extractColorFromUrl(productUrl) || extractColor(name);
+  if (!color || color === 'unknown' || color === 'neutral' || color === '') {
+    color = 'unknown';
+  }
+  return color;
+};
+
+const remoteImageToBase64 = async (url) => {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch image');
+    const buffer = await response.buffer();
+    return buffer.toString('base64');
+  } catch (error) {
+    console.error('Error converting remote image to base64:', error.message);
+    throw error;
+  }
+};
+
+// Generic scraping function
+const scrapeProducts = async (config) => {
+  const { baseUrl, brand, selectors, maxPages = 10, delay = 1000 } = config;
+    const allProducts = [];
+    let page = 1;
+    let hasMorePages = true;
+    
+    while (hasMorePages && page <= maxPages) {
+    const url = page === 1 ? baseUrl : `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}page=${page}`;
+    
+    try {
+      const response = await axios.get(url, { headers: HEADERS, timeout: 20000 });
+        const $ = cheerio.load(response.data);
+        const products = [];
+        
+      for (const selector of selectors) {
+          const elements = $(selector);
+          if (elements.length > 0) {
+          for (const element of elements.toArray()) {
+              try {
+                const $el = $(element);
+              const product = config.extractProduct($el, $);
+              if (product) {
+                products.push(product);
+              }
+            } catch (error) {
+              console.warn(`Error parsing ${brand} product:`, error.message);
+            }
+          }
+          if (products.length > 0) break;
+        }
+      }
+
+      allProducts.push(...products);
+      
+      const nextPageElement = $(`a[href*="page=${page + 1}"]`);
+      if (products.length === 0 || nextPageElement.length === 0) {
+        hasMorePages = false;
+      } else {
+        page++;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    } catch (error) {
+      console.warn(`Failed to scrape ${brand} page ${page}:`, error.message);
+      hasMorePages = false;
+    }
+  }
+
+  return allProducts;
+};
+
+// Glassons scraping configuration
+const glassonsConfig = {
+  baseUrl: 'https://www.glassons.com/c/clothing',
+  brand: 'Glassons',
+  selectors: ['.product-item', '.product-card', '[data-product]', '.product', '.item', '[class*="product"]'],
+  extractProduct: ($el, $) => {
+    const nameSelectors = ['.product-name', '.product-title', '.name', 'h3', 'h4', '.title'];
+    const priceSelectors = ['.price', '.product-price', '[data-price]', '.cost'];
+    const imageSelectors = ['img[src]', 'img[data-src]', 'img[data-lazy-src]', 'img[data-original]'];
+    const linkSelectors = ['a[href]', '.product-link'];
+
+                let name = '';
+    for (const sel of nameSelectors) {
+      const el = $el.find(sel).first();
+      if (el.length > 0) {
+        name = el.text().trim();
+                    if (name) break;
+                  }
+                }
+                
+                let priceText = '';
+    for (const sel of priceSelectors) {
+      const el = $el.find(sel).first();
+      if (el.length > 0) {
+        priceText = el.text().trim();
+                    if (priceText) break;
+                  }
+                }
+                
+                let imageUrl = '';
+    for (const sel of imageSelectors) {
+      const el = $el.find(sel).first();
+      if (el.length > 0) {
+        imageUrl = el.attr('src') || el.attr('data-src') || el.attr('data-lazy-src') || el.attr('data-original');
+                    if (imageUrl) break;
+                  }
+                }
+                
+                let productUrl = '';
+    for (const sel of linkSelectors) {
+      const el = $el.find(sel).first();
+      if (el.length > 0) {
+        productUrl = el.attr('href');
+                    if (productUrl) break;
+                  }
+                }
+                
+                if (name && priceText) {
+                  const price = cleanPrice(priceText);
+                  const category = classifyCategory(name, productUrl || '', '');
+      const color = getProductColor({ name, productUrl });
+      const uniqueId = `glassons-${name.toLowerCase().replace(/[^a-z0-9]/g, '')}-${color}`;
+                  
+                  const fullImageUrl = imageUrl && !imageUrl.startsWith('http') ? `https://www.glassons.com${imageUrl}` : imageUrl;
+                  const fullProductUrl = productUrl && !productUrl.startsWith('http') ? `https://www.glassons.com${productUrl}` : productUrl;
+                  
+      return {
+                    id: uniqueId,
+        name,
+                    brand: 'Glassons',
+        price,
+                    imageUrl: fullImageUrl || 'https://via.placeholder.com/300x400/CCCCCC/666666?text=Glassons+Product',
+                    purchaseUrl: fullProductUrl || '#',
+                    productUrl: fullProductUrl || '#',
+        category,
+        color,
+                    description: `${name} from Glassons`,
+                    materials: [],
+                    tags: ['glassons', category],
+                    retailer: { id: 'glassons', name: 'Glassons' },
+                    scrapedAt: new Date().toISOString()
+      };
+    }
+    return null;
+  }
+};
+
+// Country Road scraping configuration
+const countryRoadConfig = {
+  baseUrl: 'https://www.countryroad.co.nz/man-clothing-chinos/',
+  brand: 'Country Road',
+  selectors: ['section[data-type="ProductCard"]', '[data-type="ProductCard"]', '.product-card', '.product-item'],
+  extractProduct: ($el, $) => {
+                  const nameElement = $el.find('h2 a[title]').first();
+                  const name = nameElement.attr('title') || nameElement.text().trim();
+    
+                  const priceElement = $el.find('.price-display .value').first();
+                  const priceText = priceElement.text().trim();
+    
+                  const imageElement = $el.find('img[src]').first();
+                  let imageUrl = imageElement.attr('src');
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      imageUrl = 'https://www.countryroad.co.nz' + imageUrl;
+    }
+    
+                  const linkElement = $el.find('h2 a[href]').first();
+                  let productUrl = linkElement.attr('href');
+    if (productUrl && !productUrl.startsWith('http')) {
+      productUrl = 'https://www.countryroad.co.nz' + productUrl;
+    }
+
+                  if (name && priceText && imageUrl && productUrl) {
+                    const price = cleanPrice(priceText);
+      const category = classifyCategory(name, productUrl, '');
+      const color = getProductColor({ name, productUrl });
+                    const uniqueId = crypto.createHash('md5').update(productUrl).digest('hex');
+
+      return {
+                      id: uniqueId,
+        name,
+                      brand: 'Country Road',
+        price,
+        imageUrl,
+                      purchaseUrl: productUrl,
+        productUrl,
+        category,
+        color,
+                      description: `${name} from Country Road`,
+                      materials: [],
+                      tags: ['country-road', category],
+                      retailer: { id: 'countryroad', name: 'Country Road' },
+                      scrapedAt: new Date().toISOString()
+      };
+    }
+    return null;
+  }
+};
+
+// Scraping functions using the generic scraper
+const scrapeGlassons = () => scrapeProducts(glassonsConfig);
+
+const scrapeCountryRoad = async () => {
+  const allProducts = [];
+  for (const subcatUrl of COUNTRY_ROAD_SUBCATEGORY_URLS) {
+    const config = { ...countryRoadConfig, baseUrl: subcatUrl };
+    const products = await scrapeProducts(config);
+            allProducts.push(...products);
+          }
+    return allProducts;
+};
 
 // New endpoint to trigger scraping and database update
 app.post('/api/scrape-and-save', async (req, res) => {
@@ -593,6 +486,628 @@ app.get('/api/database-stats', async (req, res) => {
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Pinterest analysis endpoint with Google Vision API
+app.post('/api/pinterest-analyze', async (req, res) => {
+  try {
+    const { pinterestUrl } = req.body;
+    
+    if (!pinterestUrl) {
+      return res.status(400).json({ success: false, error: 'Pinterest URL is required' });
+    }
+
+    console.log('🔍 Processing Pinterest URL with Google Vision API:', pinterestUrl);
+
+    // Extract image from Pinterest URL
+    const imageUrl = await extractImageFromPinterestUrl(pinterestUrl);
+    console.log('Extracted image URL:', imageUrl);
+
+    // Analyze image with Google Vision API
+    const fashionAnalysis = await analyzeFashionImage(imageUrl);
+    console.log('🎨 Fashion analysis:', fashionAnalysis);
+
+    // Generate similar items based on analysis
+    const similarItems = generateItemsFromAnalysis(fashionAnalysis);
+    
+    const result = {
+      queryImage: imageUrl,
+      pinterestUrl: pinterestUrl,
+      similarItems: similarItems,
+      searchTime: 3.2,
+      fashionAnalysis: fashionAnalysis
+    };
+
+    console.log('✅ Pinterest analysis complete:', result.similarItems.length, 'items found');
+    res.json(result);
+
+  } catch (error) {
+    console.error('❌ Error processing Pinterest URL:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: `Failed to process Pinterest URL: ${error.message}` 
+    });
+  }
+});
+
+// Helper to compute style advice from a fashion analysis result
+function computeStyleAdviceFromAnalysis(analysis, options = {}) {
+  const { skinTone } = options; // optional, e.g., 'fair' | 'medium' | 'deep' | hex code
+  const colors = analysis.colors || [];
+  const clothingTypes = analysis.clothingTypes || [];
+  const styles = analysis.styles || [];
+  const detectedItems = analysis.detectedItems || [];
+
+  const dominantColors = colors.slice(0, 3);
+  const hasNeutralHarmony = colors.includes('white') || colors.includes('black') || colors.includes('beige') || colors.includes('gray') || colors.includes('grey');
+  const colorHarmony = hasNeutralHarmony || colors.length <= 2 ? 'excellent' : (colors.length <= 3 ? 'good' : 'needs-improvement');
+
+  let overallRatingOutOf10 = Math.min(10, Math.max(3, Math.round((analysis.confidence || 0.7) * 10 - (colorHarmony === 'needs-improvement' ? 2 : 0) + (colorHarmony === 'excellent' ? 1 : 0))));
+  const overallRatingStars = Math.max(1, Math.min(5, Math.round(overallRatingOutOf10 / 2)));
+
+  const suggestions = [];
+  const compliments = [];
+
+  // More descriptive and honest color analysis
+  if (colorHarmony === 'excellent') {
+    if (colors.includes('black') && colors.includes('white')) {
+      compliments.push('Classic black and white combo - timeless and always works');
+    } else if (hasNeutralHarmony) {
+      compliments.push('Smart neutral palette - versatile and sophisticated');
+    } else {
+      compliments.push('Your colors work beautifully together');
+    }
+  } else if (colorHarmony === 'good') {
+    compliments.push('Nice color choices - you have good instincts');
+    if (colors.length > 2) {
+      suggestions.push('Try limiting to 2-3 colors max. Right now you have a lot going on - pick your favorite color and build around it with neutrals');
+    } else {
+      suggestions.push('Add a crisp white or deep black piece to ground this look and make it more polished');
+    }
+  } else {
+    suggestions.push('Honestly, this color combo is fighting itself. Pick ONE statement color and pair it with neutrals (black, white, navy, or beige). Less is more here');
+  }
+
+  // Specific styling advice based on detected items
+  const hasTop = clothingTypes.some(item => ['shirt', 'blouse', 'top', 'sweater', 't-shirt'].includes(item.toLowerCase()));
+  const hasBottom = clothingTypes.some(item => ['pants', 'jeans', 'shorts', 'skirt', 'trousers'].includes(item.toLowerCase()));
+  const hasJacket = clothingTypes.some(item => ['jacket', 'blazer', 'coat', 'cardigan'].includes(item.toLowerCase()));
+
+  if (hasJacket) {
+    compliments.push('Love the layering - it adds structure and sophistication');
+    if (overallRatingOutOf10 < 7) {
+      suggestions.push('The jacket is doing the heavy lifting here. Make sure what\'s underneath is fitted and simple so the jacket can shine');
+    }
+  }
+
+  if (hasTop && hasBottom) {
+    if (overallRatingOutOf10 >= 7) {
+      compliments.push('Good proportions - you understand how to balance your silhouette');
+    } else {
+      suggestions.push('Think about proportions: if your top is loose, go fitted on bottom (and vice versa). Right now the proportions feel off');
+    }
+  }
+
+  // Fit and styling reality checks
+  if (clothingTypes.includes('jeans')) {
+    if (overallRatingOutOf10 >= 8) {
+      compliments.push('Jeans styled right - they look intentional, not like an afterthought');
+    } else {
+      suggestions.push('Jeans can look amazing or sloppy - make sure they fit well and aren\'t too baggy or tight. The right jeans are worth the investment');
+    }
+  }
+
+  if (clothingTypes.includes('dress')) {
+    compliments.push('Dresses are effortless chic when done right');
+    if (overallRatingOutOf10 < 7) {
+      suggestions.push('The dress is nice but needs something - try a belt to define your waist, or a jacket/cardigan for structure');
+    }
+  }
+
+  // Honest overall feedback
+  let overallFeedback;
+  if (overallRatingOutOf10 >= 8) {
+    overallFeedback = 'This look works! You clearly know what you\'re doing. The colors, fit, and styling all come together nicely.';
+  } else if (overallRatingOutOf10 >= 6) {
+    overallFeedback = 'You\'re on the right track, but there\'s room to elevate this. Small tweaks can make a big difference.';
+  } else {
+    overallFeedback = 'Let\'s be honest - this outfit needs work. But that\'s totally fine! Everyone has off days. Focus on fit first, then colors.';
+  }
+
+  const styleType = styles[0] || 'casual';
+  let occasions;
+  if (overallRatingOutOf10 >= 8) {
+    occasions = styleType.includes('formal') || hasJacket
+      ? ['Work', 'Dinner Date', 'Important Meeting', 'Date Night']
+      : ['Brunch', 'Coffee Date', 'Shopping', 'Casual Friday', 'Weekend Plans'];
+  } else if (overallRatingOutOf10 >= 6) {
+    occasions = ['Casual Errands', 'Quick Coffee', 'Grocery Run', 'Relaxed Hangout'];
+  } else {
+    occasions = ['Home', 'Quick Errands Only'];
+  }
+
+  // Skin tone compatibility with honest feedback
+  let skinCompatibility = null;
+  if (skinTone) {
+    const warmColors = ['orange', 'yellow', 'red', 'brown', 'beige', 'cream'];
+    const coolColors = ['blue', 'green', 'purple', 'gray', 'grey', 'black', 'white', 'navy'];
+    
+    const hasWarm = colors.some(c => warmColors.includes(c));
+    const hasCool = colors.some(c => coolColors.includes(c));
+
+    if (skinTone === 'fair') {
+      if (colors.includes('beige') && !hasCool) {
+        suggestions.push('The beige is washing you out. Fair skin needs contrast - try black, navy, or bright colors to make your skin glow');
+        overallRatingOutOf10 = Math.max(3, overallRatingOutOf10 - 1);
+        skinCompatibility = 'needs-improvement';
+      } else if (hasCool || colors.includes('red') || colors.includes('pink')) {
+        compliments.push('These colors are gorgeous on fair skin - they make you look radiant');
+        skinCompatibility = 'excellent';
+      } else {
+        skinCompatibility = 'good';
+      }
+    } else if (skinTone === 'medium') {
+      if (hasWarm && hasCool) {
+        compliments.push('You can pull off both warm and cool tones - lucky you!');
+        skinCompatibility = 'excellent';
+      } else {
+        skinCompatibility = 'good';
+      }
+    } else if (skinTone === 'deep') {
+      if (colors.includes('navy') && !hasWarm) {
+        suggestions.push('Navy can look flat on deeper skin. Try adding warm tones like gold, orange, or rich burgundy to make your skin tone pop');
+        overallRatingOutOf10 = Math.max(4, overallRatingOutOf10 - 1);
+        skinCompatibility = 'needs-improvement';
+      } else if (hasWarm || colors.includes('white')) {
+        compliments.push('These colors are stunning on your skin tone - they really make you glow');
+        skinCompatibility = 'excellent';
+      } else {
+        skinCompatibility = 'good';
+      }
+    }
+  }
+
+  return {
+    advice: {
+      overallRating: overallRatingStars,
+      overallRating10: overallRatingOutOf10,
+      overallFeedback,
+      suggestions,
+      compliments,
+      occasions,
+      skinCompatibility,
+      colorAnalysis: {
+        dominantColors,
+        colorHarmony,
+        colorAdvice: colorHarmony === 'excellent'
+          ? 'Your color game is strong - stick with what works'
+          : (colorHarmony === 'good' 
+            ? 'Good foundation, just needs one neutral to tie it together'
+            : 'Too many competing colors - simplify your palette'),
+      },
+      fitAnalysis: {
+        overallFit: overallRatingOutOf10 >= 7 ? 'good' : 'needs-work',
+        fitAdvice: overallRatingOutOf10 >= 7 
+          ? 'The fit works well - you know your proportions'
+          : 'Focus on fit first - even expensive clothes look cheap if they don\'t fit right'
+      },
+      styleAnalysis: {
+        styleType,
+        confidence: Math.round((analysis.confidence || 0.7) * 100),
+        styleAdvice: overallRatingOutOf10 >= 8 
+          ? 'You\'ve got this! Maybe add one small accessory to complete the look'
+          : (overallRatingOutOf10 >= 6
+            ? 'You\'re close - one or two small changes will elevate this significantly'
+            : 'Start with the basics: fit, then colors, then accessories. Build from there')
+      }
+    },
+    analysis
+  };
+}
+
+// Style check by image URL
+app.post('/api/style-check-url', async (req, res) => {
+  try {
+    const { imageUrl, skinTone } = req.body || {};
+    if (!imageUrl) {
+      return res.status(400).json({ success: false, error: 'imageUrl is required' });
+    }
+    const analysis = await analyzeFashionImage(imageUrl);
+    const payload = computeStyleAdviceFromAnalysis(analysis, { skinTone });
+    return res.json({ success: true, ...payload });
+  } catch (error) {
+    console.error('Style check URL error:', error.message);
+    return res.status(500).json({ success: false, error: 'Failed to analyze image' });
+  }
+});
+
+// Style check by base64 image (from mobile camera/gallery)
+app.post('/api/style-check-base64', async (req, res) => {
+  try {
+    const { imageBase64, skinTone } = req.body || {};
+    if (!imageBase64) {
+      return res.status(400).json({ success: false, error: 'imageBase64 is required' });
+    }
+
+    if (!visionClient) {
+      const analysis = getFallbackFashionAnalysis();
+      const payload = computeStyleAdviceFromAnalysis(analysis, { skinTone });
+      return res.json({ success: true, ...payload });
+    }
+
+    // Write temp file and analyze
+    const tmpPath = path.join(__dirname, 'uploads', `style_${Date.now()}.jpg`);
+    fs.writeFileSync(tmpPath, Buffer.from(imageBase64, 'base64'));
+    try {
+      const [labelResult] = await visionClient.labelDetection(tmpPath);
+      const labels = labelResult.labelAnnotations || [];
+      const [colorResult] = await visionClient.imageProperties(tmpPath);
+      const colors = colorResult.imagePropertiesAnnotation?.dominantColors?.colors || [];
+      const analysis = analyzeLabels(labels, colors);
+      const payload = computeStyleAdviceFromAnalysis(analysis, { skinTone });
+      return res.json({ success: true, ...payload });
+    } finally {
+      fs.unlink(tmpPath, () => {});
+    }
+  } catch (error) {
+    console.error('Style check base64 error:', error.message);
+    const fallback = computeStyleAdviceFromAnalysis(getFallbackFashionAnalysis(), { skinTone });
+    return res.json({ success: true, ...fallback, note: 'Using fallback analysis' });
+  }
+});
+
+// Helper function to extract image from Pinterest URL
+async function extractImageFromPinterestUrl(pinterestUrl) {
+  // For now, return a placeholder image
+  // In production, you'd use Pinterest API or web scraping
+  return 'https://via.placeholder.com/400x600/FF6B6B/FFFFFF?text=Pinterest+Image';
+}
+
+// Fallback fashion analysis when Google Vision is not available
+function getFallbackFashionAnalysis() {
+  return {
+    clothingTypes: ['shirt', 'dress', 'top'],
+    colors: ['white', 'black', 'blue'],
+    patterns: ['solid', 'striped'],
+    styles: ['casual', 'modern'],
+    materials: ['cotton', 'polyester'],
+    searchKeywords: ['fashion', 'clothing', 'shirt', 'white', 'casual', 'cotton'],
+    confidence: 0.6
+  };
+}
+
+// Fallback Country Road items when Firebase is not available
+function getFallbackCountryRoadItems() {
+  return [
+    {
+      id: 'fallback-1',
+      name: 'Classic White Button-Down Shirt',
+      price: 89.00,
+      image: 'https://via.placeholder.com/300x300?text=CR+Shirt',
+      category: 'Tops',
+      subcategory: 'Shirt',
+      color: 'White',
+      size: 'M',
+      brand: 'Country Road',
+      material: 'Cotton',
+      description: 'A classic white shirt for any occasion.',
+      url: 'https://www.countryroad.com.au/fallback-shirt',
+      inStock: true,
+      seasonality: ['spring', 'summer', 'autumn'],
+      formality: 'smart-casual',
+      weatherSuitability: { minTemp: 15, maxTemp: 30, conditions: ['sunny', 'cloudy'] }
+    },
+    {
+      id: 'fallback-2',
+      name: 'High-Waisted Wide-Leg Trousers',
+      price: 129.00,
+      image: 'https://via.placeholder.com/300x300?text=CR+Trousers',
+      category: 'Bottoms',
+      subcategory: 'Trousers',
+      color: 'Navy',
+      size: 'M',
+      brand: 'Country Road',
+      material: 'Linen Blend',
+      description: 'Comfortable and stylish wide-leg trousers.',
+      url: 'https://www.countryroad.com.au/fallback-trousers',
+      inStock: true,
+      seasonality: ['spring', 'summer'],
+      formality: 'casual',
+      weatherSuitability: { minTemp: 18, maxTemp: 32, conditions: ['sunny'] }
+    }
+  ];
+}
+
+// Helper function to analyze fashion image with Google Vision
+async function analyzeFashionImage(imageUrl) {
+  try {
+    if (!visionClient) {
+      console.log('⚠️ Google Vision not available, using fallback analysis');
+      return getFallbackFashionAnalysis();
+    }
+    
+    // Use Google Vision API here
+    const [labelResult] = await visionClient.labelDetection(imageUrl);
+    const labels = labelResult.labelAnnotations || [];
+
+    const [colorResult] = await visionClient.imageProperties(imageUrl);
+    const colors = colorResult.imagePropertiesAnnotation?.dominantColors?.colors || [];
+
+    // Try to localize clothing objects
+    let detectedItems = [];
+    try {
+      const [objectResult] = await visionClient.objectLocalization(imageUrl);
+      const objects = objectResult.localizedObjectAnnotations || [];
+      const clothingKeywords = ['Person', 'Shirt', 'T-shirt', 'Jacket', 'Coat', 'Blazer', 'Pants', 'Jeans', 'Shorts', 'Skirt', 'Dress', 'Sweater', 'Cardigan', 'Shoe', 'Sneaker', 'Boot', 'Hat', 'Bag'];
+      detectedItems = objects
+        .filter(o => clothingKeywords.some(k => (o.name || '').toLowerCase().includes(k.toLowerCase())))
+        .map(o => ({ type: o.name, score: o.score, boundingPoly: o.boundingPoly }));
+    } catch (e) {
+      // Best-effort; ignore
+    }
+
+    const baseAnalysis = analyzeLabels(labels, colors);
+    baseAnalysis.detectedItems = detectedItems;
+    return baseAnalysis;
+  } catch (error) {
+    console.error('Google Vision API error:', error);
+    console.log('🔄 Falling back to local analysis');
+    return getFallbackFashionAnalysis();
+  }
+}
+
+// Helper function to analyze labels
+function analyzeLabels(labels, colors) {
+  const clothingTypes = [];
+  const detectedColors = [];
+  const patterns = [];
+  const styles = [];
+  const materials = [];
+  const searchKeywords = [];
+
+  // Process labels for fashion information
+  labels.forEach(label => {
+    const description = label.description.toLowerCase();
+    const score = label.score || 0;
+
+    if (score < 0.7) return;
+
+    // Check for clothing types
+    if (['shirt', 'dress', 'pants', 'jacket', 'sweater', 'top', 'blouse', 'skirt', 'shorts', 'jeans'].some(keyword => description.includes(keyword))) {
+      clothingTypes.push(label.description);
+      searchKeywords.push(label.description);
+    }
+  });
+
+  // Process colors
+  colors.forEach(color => {
+    if (color.color) {
+      const colorName = getColorName(color.color);
+      if (colorName) {
+        detectedColors.push(colorName);
+        searchKeywords.push(colorName);
+      }
+    }
+  });
+
+  return {
+    clothingTypes: [...new Set(clothingTypes)],
+    colors: [...new Set(detectedColors)],
+    patterns: [...new Set(patterns)],
+    styles: [...new Set(styles)],
+    materials: [...new Set(materials)],
+    searchKeywords: [...new Set(searchKeywords)],
+    confidence: labels.length > 0 ? labels.reduce((sum, label) => sum + (label.score || 0), 0) / labels.length : 0
+  };
+}
+
+// Helper function to get color name from RGB
+function getColorName(color) {
+  const { red, green, blue } = color;
+  
+  const colorMap = [
+    { name: 'white', r: [240, 255], g: [240, 255], b: [240, 255] },
+    { name: 'black', r: [0, 30], g: [0, 30], b: [0, 30] },
+    { name: 'red', r: [200, 255], g: [0, 100], b: [0, 100] },
+    { name: 'blue', r: [0, 100], g: [0, 150], b: [200, 255] },
+    { name: 'green', r: [0, 100], g: [150, 255], b: [0, 100] },
+    { name: 'yellow', r: [200, 255], g: [200, 255], b: [0, 100] },
+    { name: 'pink', r: [200, 255], g: [100, 200], b: [150, 255] },
+    { name: 'purple', r: [100, 200], g: [0, 100], b: [150, 255] },
+    { name: 'orange', r: [200, 255], g: [100, 200], b: [0, 100] },
+    { name: 'brown', r: [100, 200], g: [50, 150], b: [0, 100] },
+    { name: 'gray', r: [100, 200], g: [100, 200], b: [100, 200] },
+    { name: 'navy', r: [0, 50], g: [0, 50], b: [100, 150] },
+    { name: 'beige', r: [200, 255], g: [200, 255], b: [150, 200] }
+  ];
+
+  for (const colorDef of colorMap) {
+    if (
+      red >= colorDef.r[0] && red <= colorDef.r[1] &&
+      green >= colorDef.g[0] && green <= colorDef.g[1] &&
+      blue >= colorDef.b[0] && blue <= colorDef.b[1]
+    ) {
+      return colorDef.name;
+    }
+  }
+
+  return null;
+}
+
+// Helper function to generate items from analysis
+function generateItemsFromAnalysis(analysis) {
+  const items = [];
+  const { clothingTypes, colors, styles, materials } = analysis;
+  
+  for (let i = 0; i < 8; i++) {
+    const clothingType = clothingTypes[i % clothingTypes.length] || 'shirt';
+    const color = colors[i % colors.length] || 'white';
+    const style = styles[i % styles.length] || 'casual';
+    const material = materials[i % materials.length] || 'cotton';
+    
+    items.push({
+      id: `server_${i + 1}`,
+      name: `${color.charAt(0).toUpperCase() + color.slice(1)} ${clothingType}`,
+      brand: getRandomBrand(),
+      price: getRandomPrice(),
+      image: getColorCodedImage(color, clothingType),
+      category: clothingType.toLowerCase(),
+      color: color,
+      size: 'M',
+      retailer: getRandomRetailer(),
+      retailerUrl: getRandomRetailerUrl(),
+      similarity: 75 + Math.random() * 15 // 75-90%
+    });
+  }
+  
+  return items;
+}
+
+// Helper functions for item generation
+function getRandomBrand() {
+  const brands = ['ASOS', 'Zara', 'Uniqlo', 'H&M', 'Cotton On', 'Glassons', 'Witchery', 'Seed Heritage'];
+  return brands[Math.floor(Math.random() * brands.length)];
+}
+
+function getRandomPrice() {
+  return Math.floor(Math.random() * 150) + 30; // $30-$180
+}
+
+function getRandomRetailer() {
+  const retailers = ['ASOS', 'Zara', 'Uniqlo', 'H&M', 'Cotton On', 'Glassons', 'Witchery', 'Seed Heritage'];
+  return retailers[Math.floor(Math.random() * retailers.length)];
+}
+
+function getRandomRetailerUrl() {
+  const urls = [
+    'https://www.asos.com/au/',
+    'https://www.zara.com/au/',
+    'https://www.uniqlo.com/au/',
+    'https://www2.hm.com/en_au/',
+    'https://cottonon.com/au/',
+    'https://www.glassons.com/au/',
+    'https://www.witchery.com.au/',
+    'https://www.seedheritage.com/au/'
+  ];
+  return urls[Math.floor(Math.random() * urls.length)];
+}
+
+function getColorCodedImage(color, clothingType) {
+  const colorMap = {
+    'white': 'FFFFFF',
+    'black': '000000',
+    'red': 'FF0000',
+    'blue': '0000FF',
+    'green': '00FF00',
+    'yellow': 'FFFF00',
+    'pink': 'FF69B4',
+    'purple': '800080',
+    'orange': 'FFA500',
+    'brown': '8B4513',
+    'gray': '808080',
+    'grey': '808080',
+    'navy': '000080',
+    'beige': 'F5F5DC',
+    'cream': 'FFFDD0',
+    'tan': 'D2B48C'
+  };
+  
+  const hexColor = colorMap[color.toLowerCase()] || '808080';
+  const textColor = color.toLowerCase() === 'white' || color.toLowerCase() === 'yellow' ? '000000' : 'FFFFFF';
+  const text = `${color.charAt(0).toUpperCase() + color.slice(1)} ${clothingType}`;
+  
+  return `https://via.placeholder.com/300x400/${hexColor}/${textColor}?text=${encodeURIComponent(text)}`;
+}
+
+// Debug endpoint to check Firestore collections
+app.get('/api/debug/collections', async (req, res) => {
+  try {
+    console.log('Checking Firestore collections...');
+    
+    // Check if retailer_products collection exists and has data
+    const productsRef = db.collection('retailer_products');
+    const snapshot = await productsRef.limit(5).get();
+    
+    const collections = {
+      retailer_products: {
+        totalDocs: snapshot.size,
+        sampleDocs: []
+      }
+    };
+    
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      collections.retailer_products.sampleDocs.push({
+        id: doc.id,
+        retailer: data.retailer,
+        name: data.name,
+        category: data.category
+      });
+    });
+    
+    // Check for Country Road specifically - try different query approaches
+    let countryRoadSnapshot;
+    let queryMethod = 'none';
+    
+    try {
+      // Try querying by retailer.name
+      countryRoadSnapshot = await productsRef.where('retailer.name', '==', 'Country Road').limit(5).get();
+      queryMethod = 'retailer.name';
+    } catch (error) {
+      console.log('Query by retailer.name failed:', error.message);
+      try {
+        // Try querying by retailer.id
+        countryRoadSnapshot = await productsRef.where('retailer.id', '==', 'countryroad').limit(5).get();
+        queryMethod = 'retailer.id';
+      } catch (error2) {
+        console.log('Query by retailer.id failed:', error2.message);
+        // Try getting all and filtering
+        const allSnapshot = await productsRef.limit(10).get();
+        countryRoadSnapshot = { size: 0, forEach: () => {} };
+        allSnapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.retailer && data.retailer.name === 'Country Road') {
+            countryRoadSnapshot.size++;
+            if (countryRoadSnapshot.size <= 5) {
+              if (!countryRoadSnapshot.sampleDocs) countryRoadSnapshot.sampleDocs = [];
+              countryRoadSnapshot.sampleDocs.push({
+                id: doc.id,
+                retailer: data.retailer,
+                name: data.name,
+                category: data.category
+              });
+            }
+          }
+        });
+        queryMethod = 'manual_filter';
+      }
+    }
+    
+    collections.countryRoad = {
+      totalDocs: countryRoadSnapshot.size,
+      sampleDocs: countryRoadSnapshot.sampleDocs || [],
+      queryMethod: queryMethod
+    };
+    
+    if (countryRoadSnapshot.forEach) {
+      countryRoadSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (!collections.countryRoad.sampleDocs) collections.countryRoad.sampleDocs = [];
+        collections.countryRoad.sampleDocs.push({
+          id: doc.id,
+          retailer: data.retailer,
+          name: data.name,
+          category: data.category
+        });
+      });
+    }
+    
+    res.json({ success: true, collections });
+    
+  } catch (error) {
+    console.error('Debug error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // Pinterest Board Analysis Endpoint
@@ -812,23 +1327,17 @@ async function analyzeClothingImageOpenAI(imageUrl) {
 // Database functions for shopping products
 async function saveProductsToDatabase(products) {
   if (!products || products.length === 0) {
-    console.log('No products to save to database');
     return { saved: 0, skipped: 0 };
   }
 
-  console.log(`Saving ${products.length} products to database...`);
-
-  // Firestore batch limit is 50
   const BATCH_LIMIT = 50;
   let savedCount = 0;
   let skippedCount = 0;
-  let batchNum = 0;
 
   for (let i = 0; i < products.length; i += BATCH_LIMIT) {
-    batchNum++;
     const batchProducts = products.slice(i, i + BATCH_LIMIT);
     const batch = db.batch();
-    console.log(`[Batch ${batchNum}] Processing ${batchProducts.length} products...`);
+    
     for (const product of batchProducts) {
       try {
         batch.set(shoppingCollection.doc(product.id), {
@@ -838,22 +1347,20 @@ async function saveProductsToDatabase(products) {
           lastScraped: new Date().toISOString()
         }, { merge: true });
         savedCount++;
-        console.log(`[Batch ${batchNum}][SET] ${product.name} | color: ${product.color}`);
       } catch (error) {
-        console.error(`[Batch ${batchNum}] Error processing product ${product.id}:`, error);
+        console.error(`Error processing product ${product.id}:`, error);
         skippedCount++;
       }
     }
+    
     try {
       await batch.commit();
-      console.log(`[Batch ${batchNum}] Batch commit successful: ${batchProducts.length} products`);
     } catch (error) {
-      console.error(`[Batch ${batchNum}] Error committing batch to database:`, error);
+      console.error('Error committing batch to database:', error);
       skippedCount += batchProducts.length;
     }
   }
 
-  console.log(`Database operation completed: ${savedCount} saved/updated, ${skippedCount} skipped`);
   return { saved: savedCount, skipped: skippedCount };
 }
 
@@ -864,13 +1371,7 @@ async function getProductsFromDatabase(limit = 100) {
       .limit(limit)
       .get();
     
-    const products = [];
-    snapshot.forEach(doc => {
-      products.push({ id: doc.id, ...doc.data() });
-    });
-    
-    console.log(`Retrieved ${products.length} products from database`);
-    return products;
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
     console.error('Error retrieving products from database:', error);
     return [];
@@ -886,20 +1387,13 @@ async function clearOldProducts(daysOld = 30) {
       .where('lastScraped', '<', cutoffDate.toISOString())
       .get();
     
+    if (snapshot.empty) return 0;
+    
     const batch = db.batch();
-    let deletedCount = 0;
-    
-    snapshot.forEach(doc => {
-      batch.delete(doc.ref);
-      deletedCount++;
-    });
-    
-    if (deletedCount > 0) {
+    snapshot.forEach(doc => batch.delete(doc.ref));
       await batch.commit();
-      console.log(`Deleted ${deletedCount} old products from database`);
-    }
     
-    return deletedCount;
+    return snapshot.size;
   } catch (error) {
     console.error('Error clearing old products:', error);
     return 0;
@@ -954,6 +1448,63 @@ app.get('/api/retailer-feed', async (req, res) => {
   } catch (error) {
     console.error('Error fetching retailer products:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch retailer products' });
+  }
+});
+
+// API endpoint to get Country Road items for the mobile app
+app.get('/api/country-road-items', async (req, res) => {
+  try {
+    console.log('Fetching Country Road items for mobile app...');
+    
+    if (!db) {
+      console.log('⚠️ Firebase not available, returning fallback items');
+      return res.json({ success: true, items: getFallbackCountryRoadItems() });
+    }
+    
+    // Get all Country Road products from Firestore
+    const productsRef = db.collection('retailer_products');
+    
+    // Since Firestore queries on nested fields can be problematic, 
+    // we'll get all products and filter manually
+    const allSnapshot = await productsRef.get();
+    const items = [];
+    
+    allSnapshot.forEach(doc => {
+      const data = doc.data();
+      // Filter for Country Road products
+      if (data.retailer && data.retailer.name === 'Country Road') {
+        items.push({
+          id: doc.id,
+          name: data.name || 'Unknown Item',
+          price: data.price || 0,
+          originalPrice: data.originalPrice,
+          image: data.image || 'https://via.placeholder.com/300x300?text=No+Image',
+          category: data.category || 'Unknown',
+          subcategory: data.subcategory || 'Unknown',
+          color: data.color || 'Unknown',
+          size: data.size || 'M',
+          brand: data.brand || 'Country Road',
+          material: data.material || 'Unknown',
+          description: data.description || '',
+          url: data.url || '',
+          inStock: data.inStock !== false,
+          seasonality: data.seasonality || ['all'],
+          formality: data.formality || 'casual',
+          weatherSuitability: {
+            minTemp: data.minTemp || 0,
+            maxTemp: data.maxTemp || 40,
+            conditions: data.conditions || ['all']
+          }
+        });
+      }
+    });
+    
+    console.log(`Found ${items.length} Country Road items`);
+    res.json({ success: true, items: items });
+    
+  } catch (error) {
+    console.error('Error fetching Country Road items:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch Country Road items' });
   }
 });
 

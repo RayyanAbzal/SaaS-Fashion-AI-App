@@ -21,20 +21,18 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Colors } from '../constants/colors';
 import { WardrobeItem, RootStackParamList, MainTabParamList } from '../types';
-import { FirestoreService } from '../services/firestoreService';
-import FirebaseStorageService from '../services/firebaseStorageService';
+import SupabaseStorageService from '../services/supabaseStorageService';
 import { useUser } from '../contexts/UserContext';
 import WardrobeItemForm from '../components/WardrobeItemForm';
 import { AuthService } from '../services/authService';
 import { AchievementService } from '../services/achievementService';
+import * as WardrobeService from '../services/wardrobeService';
 
 type WardrobeScreenRouteParams = {
   capturedImageUri?: string;
 };
 
-type WardrobeScreenProps = BottomTabScreenProps<MainTabParamList, 'Wardrobe'> & {
-  route: { params?: WardrobeScreenRouteParams };
-};
+type WardrobeScreenProps = BottomTabScreenProps<MainTabParamList, 'Wardrobe'> | any;
 
 const CATEGORIES = [
   { key: 'all', label: 'All', icon: 'shirt-outline' },
@@ -45,9 +43,8 @@ const CATEGORIES = [
   { key: 'outerwear', label: 'Outerwear', icon: 'shirt-outline' },
 ];
 
-export default function WardrobeScreen({ route }: WardrobeScreenProps) {
+export default function WardrobeScreen({ navigation, route }: WardrobeScreenProps) {
   const { user } = useUser();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [items, setItems] = useState<WardrobeItem[]>([]);
   const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,8 +85,24 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
       }
 
       setLoading(true);
-      try {
-      const unsubscribe = FirestoreService.onWardrobeUpdate(
+      
+      // Real-time updates will be implemented with Supabase subscriptions
+      const loadWardrobeItems = async () => {
+        try {
+          if (!user?.id) return;
+          const items = await WardrobeService.getUserWardrobe(user.id);
+          setItems(items);
+          setFilteredItems(items);
+          setLoading(false);
+        } catch (error) {
+          console.error('Error loading wardrobe:', error);
+          setLoading(false);
+        }
+      };
+      loadWardrobeItems();
+      return () => {}; // Placeholder unsubscribe
+      
+      /* const unsubscribe = FirestoreService.onWardrobeUpdate(
           user.id,
         (updatedItems: WardrobeItem[]) => {
             // Ensure all items have required properties
@@ -112,11 +125,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
       );
 
       return () => unsubscribe();
-      } catch (error) {
-        console.error('Error in checkUserAndFetchItems:', error);
-        setLoading(false);
-        Alert.alert('Error', 'Failed to load wardrobe. Please try again.');
-      }
+      */
     };
 
     checkUserAndFetchItems();
@@ -200,7 +209,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
         throw new Error("No image is selected to be uploaded.");
       }
 
-      const newItemId = selectedItem?.id || FirestoreService.getNewId();
+      const newItemId = selectedItem?.id || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       let finalItem: WardrobeItem = { 
         ...item, 
         id: newItemId, 
@@ -231,19 +240,19 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
       finalItem.updatedAt = new Date();
       
       console.log(`Attempting to upload image to path: wardrobe/${finalItem.userId}/${finalItem.id}`);
-      const imageUrl = await FirebaseStorageService.uploadImage(imageToAdd, `wardrobe/${finalItem.userId}/${finalItem.id}`);
+      const imageUrl = await SupabaseStorageService.uploadImage(imageToAdd, `wardrobe/${finalItem.userId}/${finalItem.id}`);
       console.log('Image uploaded successfully, URL:', imageUrl);
       
       const itemWithUrl = { ...finalItem, imageUrl };
 
       try {
         if (selectedItem) {
-          console.log('Updating existing item in Firestore...');
-          await FirestoreService.updateWardrobeItem(itemWithUrl);
+          console.log('Updating existing item...');
+          await WardrobeService.updateWardrobeItem(itemWithUrl);
           Alert.alert('Success', 'Item updated successfully!');
         } else {
-          console.log('Adding new item to Firestore...');
-          await FirestoreService.addWardrobeItem(itemWithUrl);
+          console.log('Adding new item...');
+          await WardrobeService.addWardrobeItem(itemWithUrl);
           Alert.alert('Success', 'Item added to your wardrobe!');
         }
         setIsFormVisible(false);
@@ -260,7 +269,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
                 style: 'cancel',
                 onPress: () => {
                   // Clean up the uploaded image since we're not using it
-                  FirebaseStorageService.deleteImage(`wardrobe/${finalItem.userId}/${finalItem.id}`).catch(console.error);
+                  SupabaseStorageService.deleteImage(`wardrobe/${finalItem.userId}/${finalItem.id}`).catch(console.error);
                 }
               },
               {
@@ -284,7 +293,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
   };
 
   const handleOpenNativeCamera = () => {
-    navigation.navigate('Camera');
+    navigation.navigate('Camera' as any);
   };
 
   const handleAddItemFromLibrary = async () => {
@@ -319,7 +328,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
         if (!silent) Alert.alert("Error", "Invalid item data.");
         return;
       }
-      await FirestoreService.deleteWardrobeItem(item.userId, item.id);
+      await WardrobeService.deleteWardrobeItem(item.id);
       if (!silent) Alert.alert("Success", "Item deleted.");
     } catch (error) {
       if (!silent) Alert.alert("Error", "Could not delete item.");
@@ -430,7 +439,7 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
     const categoryItems = items.filter(item => item.category === category);
     if (categoryItems.length === 0) return null;
 
-  return (
+    return (
       <View style={styles.sectionHeader}>
         <View style={styles.sectionHeaderContent}>
           <Ionicons name={categoryInfo.icon as any} size={24} color={Colors.primary} />
@@ -599,31 +608,31 @@ export default function WardrobeScreen({ route }: WardrobeScreenProps) {
           renderSectionedItems()
         )}
       </View>
-        
-        {isFormVisible && imageToAdd && (
-            <Modal
-            animationType="slide"
-            transparent={false}
-            visible={isFormVisible}
-            onRequestClose={() => {
-                setIsFormVisible(false);
-                setSelectedItem(null);
-                setImageToAdd(null);
+
+      {isFormVisible && imageToAdd && (
+        <Modal
+          animationType="slide"
+          transparent={false}
+          visible={isFormVisible}
+          onRequestClose={() => {
+            setIsFormVisible(false);
+            setSelectedItem(null);
+            setImageToAdd(null);
+          }}
+        >
+          <WardrobeItemForm
+            imageUri={imageToAdd}
+            existingItem={selectedItem || undefined}
+            onSave={handleSaveItem}
+            onCancel={() => {
+              setIsFormVisible(false);
+              setSelectedItem(null);
+              setImageToAdd(null);
             }}
-            >
-            <WardrobeItemForm
-                imageUri={imageToAdd}
-                existingItem={selectedItem || undefined}
-                onSave={handleSaveItem}
-                onCancel={() => {
-                    setIsFormVisible(false);
-                    setSelectedItem(null);
-                    setImageToAdd(null);
-                }}
-                saving={saving}
-            />
-            </Modal>
-        )}
+            saving={saving}
+          />
+        </Modal>
+      )}
 
       {saving && (
         <View style={styles.savingOverlay}>

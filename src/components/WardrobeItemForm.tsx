@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Colors } from '../constants/colors';
 import { WardrobeItem, Category } from '../types';
-import OpenAIVisionService, { VisionAnalysis as AIAnalysis } from '../services/openaiVisionService';
+import StyleAdviceService from '../services/styleAdviceService';
 import { fileToBase64 } from '../utils/fileUtils';
 import { AuthService } from '../services/authService';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,7 +46,7 @@ export default function WardrobeItemForm({
   const [lastWorn, setLastWorn] = useState(existingItem?.lastWorn);
 
   const [isAnalyzing, setIsAnalyzing] = useState(true);
-  const [analysis, setAnalysis] = useState<AIAnalysis | null>(existingItem?.aiAnalysis || null);
+  const [analysis, setAnalysis] = useState<any | null>(existingItem?.aiAnalysis || null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [customTag, setCustomTag] = useState('');
 
@@ -69,27 +69,26 @@ export default function WardrobeItemForm({
 
     try {
       const base64 = await fileToBase64(imageUri);
-      const visionService = OpenAIVisionService.getInstance();
-      const analysisResult = await visionService.analyzeClothingImage(`data:image/jpeg;base64,${base64}`);
+      const advice = await StyleAdviceService.analyzeOutfitBase64(base64);
+      // Try to extract first detected item if present
+      const first = Array.isArray((advice as any).detectedItems) && (advice as any).detectedItems.length > 0
+        ? (advice as any).detectedItems[0]
+        : null;
 
-      if (!analysisResult.analysis.isValidClothing) {
-        setAnalysisError("Our AI couldn't detect a clear clothing item. Please try another photo.");
-        Alert.alert(
-          "Not a valid clothing item",
-          "Our AI couldn't detect a clothing item in this photo. Please try another one.",
-          [{ text: 'OK' }]
-        );
-        onCancel(); // Automatically close the form on invalid image
-        return;
-      }
+      const inferredName = first?.description || 'New Item';
+      const inferredCategory = (first?.category || 'tops') as Category;
+      const inferredSubcategory = first?.subcategory || '';
+      const inferredColor = first?.color || '';
+      const inferredBrand = first?.brand || 'unknown';
+      const inferredTags = first?.tags || [];
 
-      setAnalysis(analysisResult.analysis);
-      setName(analysisResult.analysis.description || 'New Item');
-      setCategory(analysisResult.analysis.category || 'tops');
-      setSubcategory(analysisResult.analysis.subcategory || '');
-      setColor(analysisResult.analysis.color || '');
-      setBrand(analysisResult.analysis.brand || 'unknown');
-      setTags(analysisResult.analysis.tags || []);
+      setAnalysis(first || advice || null);
+      setName(inferredName);
+      setCategory(inferredCategory);
+      setSubcategory(inferredSubcategory);
+      setColor(inferredColor);
+      setBrand(inferredBrand);
+      setTags(inferredTags);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred during analysis.';
       setAnalysisError(errorMessage);

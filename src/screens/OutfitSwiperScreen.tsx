@@ -9,6 +9,8 @@ import {
   Image,
   Linking,
   ScrollView,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,14 +20,12 @@ import { getWardrobeItems } from '../services/wardrobeService';
 import { StyleService } from '../services/styleService';
 import { AuthService } from '../services/authService';
 import { FirestoreService } from '../services/firestoreService';
-import { Swipeable } from 'react-native-gesture-handler';
+import Swiper from 'react-native-deck-swiper';
 import Animated, { Extrapolate, interpolate } from 'react-native-reanimated';
 
 interface OutfitSwiperScreenProps {
   navigation: any;
 }
-
-const CARD_HEIGHT = 400; // Assuming a default height, as dimensions are removed
 
 // Custom animation for the carousel items
 const useCustomAnimation = () => {
@@ -58,14 +58,21 @@ const useCustomAnimation = () => {
   };
 };
 
-const OutfitCard = ({ card, onScroll, onDislike, onLike }: { card: OutfitSuggestion, onScroll: (y: number) => void, onDislike: () => void, onLike: () => void }) => {
+const OutfitCard = ({ card, onDislike, onLike, onSwap, onImageZoom }: { card: OutfitSuggestion, onDislike: () => void, onLike: () => void, onSwap: (category: string) => void, onImageZoom: (imageUrl: string) => void }) => {
   const renderItem = (item: WardrobeItem | any, index: number) => {
     const isWardrobeItem = 'userId' in item;
     const isRetailerItem = !!item.retailer && !isWardrobeItem;
     return (
       <View key={item.id + index} style={styles.verticalItemContainer}>
-        <Image source={{ uri: item.imageUrl }} style={styles.verticalItemImage} />
-        <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+        <TouchableOpacity onPress={() => onImageZoom(item.imageUrl)}>
+          <Image source={{ uri: item.imageUrl }} style={styles.verticalItemImage} />
+        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+          <TouchableOpacity onPress={() => onSwap(item.category)} style={{ marginLeft: 8 }}>
+            <Ionicons name="swap-horizontal" size={20} color={Colors.primary} />
+          </TouchableOpacity>
+        </View>
         <Text style={styles.itemBrand}>{item.brand}</Text>
         {item.price && (
           <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
@@ -90,30 +97,25 @@ const OutfitCard = ({ card, onScroll, onDislike, onLike }: { card: OutfitSuggest
   };
 
   return (
-    <View style={[styles.card, { height: CARD_HEIGHT }]}> 
+    <View style={[styles.card, { flex: 1 }]}> 
       <Text style={styles.outfitName}>Outfit Suggestion</Text>
-      <ScrollView
-        style={styles.itemsScroll}
-        contentContainerStyle={[styles.itemsColumn, { flexGrow: 1 }]}
-        showsVerticalScrollIndicator={true}
-        scrollEnabled={true}
-        onScroll={e => onScroll(e.nativeEvent.contentOffset.y)}
-        scrollEventThrottle={16}
-      >
-        {card.items.map(renderItem)}
-        <View style={styles.outfitSummaryContainer}>
-          <Text style={styles.outfitSummaryTitle}>Outfit Summary</Text>
-          <Text style={styles.outfitReasoning}>{card.reasoning}</Text>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <View style={[styles.itemsScroll, styles.itemsColumn, { flexGrow: 1 }]}>
+          {card.items.map(renderItem)}
+          <View style={styles.outfitSummaryContainer}>
+            <Text style={styles.outfitSummaryTitle}>Outfit Summary</Text>
+            <Text style={styles.outfitReasoning}>{card.reasoning}</Text>
+          </View>
+        </View>
+        <View style={styles.cardFooterRow}>
+          <TouchableOpacity style={styles.dislikeButton} onPress={onDislike}>
+            <Text style={styles.dislikeButtonText}>👎</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.likeButton} onPress={onLike}>
+            <Text style={styles.likeButtonText}>👍</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
-      <View style={styles.cardFooterRow}>
-        <TouchableOpacity style={styles.dislikeButton} onPress={onDislike}>
-          <Text style={styles.dislikeButtonText}>👎</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.likeButton} onPress={onLike}>
-          <Text style={styles.likeButtonText}>👍</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
 };
@@ -122,10 +124,13 @@ const OutfitSwiperScreen: React.FC<OutfitSwiperScreenProps> = ({ navigation }) =
   const [outfits, setOutfits] = useState<OutfitSuggestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(false);
-  const swipeableRef = useRef<Swipeable>(null);
+  const swipeableRef = useRef<Swiper<OutfitSuggestion>>(null);
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [progressVisible, setProgressVisible] = useState(false);
 
   const loadOutfits = async () => {
     setLoading(true);
+    setTimeout(() => { if (loading) setProgressVisible(true); }, 1000);
     try {
       const user = await AuthService.getCurrentUser();
       const userId = user?.id;
@@ -142,6 +147,7 @@ const OutfitSwiperScreen: React.FC<OutfitSwiperScreenProps> = ({ navigation }) =
       Alert.alert('Error', 'Failed to load outfit suggestions');
     } finally {
       setLoading(false);
+      setProgressVisible(false);
     }
   };
 
@@ -190,6 +196,18 @@ const OutfitSwiperScreen: React.FC<OutfitSwiperScreenProps> = ({ navigation }) =
     }
   };
 
+  const handleSwap = async (category: string) => {
+    const currentOutfit = outfits[currentIndex];
+    if (!currentOutfit) return;
+    const user = await AuthService.getCurrentUser();
+    const userId = user?.id;
+    if (!userId) return;
+    const newItems = await StyleService.swapItemInOutfit(currentOutfit.items, category, userId);
+    const newOutfits = [...outfits];
+    newOutfits[currentIndex] = { ...currentOutfit, items: newItems };
+    setOutfits(newOutfits);
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -212,41 +230,38 @@ const OutfitSwiperScreen: React.FC<OutfitSwiperScreenProps> = ({ navigation }) =
 
   return (
     <View style={styles.container}>
-      <View style={styles.swiperContainer}>
-        <Swipeable
-          ref={swipeableRef}
-          onSwipeableOpen={(direction) => {
-            if (direction === 'left') {
-              handleSwipe('left');
-            } else if (direction === 'right') {
-              handleSwipe('right');
-            }
-          }}
-          renderRightActions={() => (
-            <View style={styles.swipeAction}>
-              <Text style={styles.swipeActionText}>👍</Text>
-            </View>
-          )}
-          renderLeftActions={() => (
-            <View style={styles.swipeAction}>
-              <Text style={styles.swipeActionText}>👎</Text>
-            </View>
-          )}
-        >
-          <OutfitCard 
-            card={outfits[currentIndex]} 
-            onScroll={() => {}} 
-            onDislike={() => handleSwipe('left')} 
-            onLike={() => handleSwipe('right')} 
-          />
-        </Swipeable>
-      </View>
+      {progressVisible && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Generating personalized outfits...</Text>
+        </View>
+      )}
+      <Swiper
+        cards={outfits}
+        renderCard={card => <OutfitCard card={card} onDislike={() => handleSwipe('left')} onLike={() => handleSwipe('right')} onSwap={handleSwap} onImageZoom={setZoomImage} />}
+        onSwipedLeft={() => handleSwipe('left')}
+        onSwipedRight={() => handleSwipe('right')}
+        stackSize={3}
+        backgroundColor="transparent"
+        cardIndex={currentIndex}
+        animateCardOpacity
+        overlayLabels={{
+          left: { title: 'NOPE', style: { label: { color: 'red', fontSize: 32 } } },
+          right: { title: 'LIKE', style: { label: { color: 'green', fontSize: 32 } } }
+        }}
+        ref={swipeableRef}
+      />
       
-      <View style={styles.progressContainer}>
-        <Text style={styles.progressText}>
-          {currentIndex + 1} of {outfits.length}
-        </Text>
-      </View>
+      <Modal visible={!!zoomImage} transparent animationType="fade" onRequestClose={() => setZoomImage(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}>
+          <TouchableOpacity style={{ position: 'absolute', top: 40, right: 20, zIndex: 2 }} onPress={() => setZoomImage(null)}>
+            <Ionicons name="close" size={36} color="#fff" />
+          </TouchableOpacity>
+          {zoomImage && (
+            <Image source={{ uri: zoomImage }} style={{ width: Dimensions.get('window').width * 0.9, height: Dimensions.get('window').height * 0.7, resizeMode: 'contain' }} />
+          )}
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -258,7 +273,8 @@ const styles = StyleSheet.create({
   },
   swiperContainer: {
     flex: 1,
-    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   card: {
     backgroundColor: Colors.backgroundCard,
@@ -272,7 +288,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 5,
-    minHeight: 400,
+    alignSelf: 'center',
+    width: '100%',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -357,14 +374,6 @@ const styles = StyleSheet.create({
   },
   swipeActionText: {
     fontSize: 24,
-  },
-  progressContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  progressText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
   },
   loadingContainer: {
     flex: 1,
