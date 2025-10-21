@@ -31,7 +31,7 @@ export interface StyleQuestion {
 }
 
 class StyleAdviceService {
-  static serverUrl = 'http://localhost:3000';
+  static serverUrl = 'https://saa-s-fashion-ai-app3.vercel.app';
 
   static async analyzeOutfit(imageUri: string, opts?: { skinTone?: string }): Promise<StyleAdvice & { overallRating10?: number; detectedItems?: any[] }> {
     try {

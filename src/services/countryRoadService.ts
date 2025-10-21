@@ -27,7 +27,7 @@ export interface CountryRoadItem {
 
 class CountryRoadService {
   // Update this URL to your Vercel deployment URL
-  private static baseUrl = 'https://your-app-name.vercel.app/api';
+  private static baseUrl = 'https://saa-s-fashion-ai-app3.vercel.app/api';
   private static cachedItems: CountryRoadItem[] = [];
   private static lastFetch: number = 0;
   private static cacheExpiry = 30 * 60 * 1000; // 30 minutes

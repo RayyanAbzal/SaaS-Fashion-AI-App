@@ -50,7 +50,7 @@ export class PinterestService {
       }
 
       // Call server to process Pinterest URL with Google Vision API
-      const response = await fetch('http://localhost:3000/api/pinterest-analyze', {
+      const response = await fetch('https://saa-s-fashion-ai-app3.vercel.app/api/pinterest-analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -160,7 +160,7 @@ export default function StyleSwipeScreen() {
       setError(errorMessage);
       Alert.alert(
         'Error Loading Outfits', 
-        `Failed to load outfits: ${errorMessage}\n\nMake sure the server is running on localhost:3000`
+        `Failed to load outfits: ${errorMessage}\n\nMake sure the API is deployed and accessible`
       );
     } finally {
       setLoading(false);
