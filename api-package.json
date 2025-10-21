@@ -1,0 +1,16 @@
+{
+  "name": "fashion-ai-api",
+  "version": "1.0.0",
+  "description": "Fashion AI API endpoints",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'API build complete'",
+    "start": "echo 'API ready'"
+  },
+  "dependencies": {
+    "@vercel/node": "^3.0.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}

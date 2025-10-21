@@ -1,0 +1,16 @@
+node_modules
+.expo
+.expo-shared
+ios
+android
+src
+App.tsx
+app.json
+babel.config.js
+metro.config.js
+package.json
+package-lock.json
+tsconfig.json
+*.md
+assets
+server
