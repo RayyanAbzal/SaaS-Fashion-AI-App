@@ -1,6 +1,9 @@
 {
   "functions": {
-    "api/**/*.ts": {
+    "api/retail-products.ts": {
+      "runtime": "@vercel/node"
+    },
+    "api/country-road-items.ts": {
       "runtime": "@vercel/node"
     }
   }
