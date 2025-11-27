@@ -1,9 +1,14 @@
 {
+  "ignore": [
+    "api/v1/**",
+    "api/pinterest-analyze.ts",
+    "api/pinterest-board-analyze.ts",
+    "api/style-check-base64.ts",
+    "api/style-check-url.ts",
+    "api/outfit-advice.ts"
+  ],
   "functions": {
-    "api/retail-products.ts": {
-      "runtime": "@vercel/node"
-    },
-    "api/country-road-items.ts": {
+    "api/**/*.ts": {
       "runtime": "@vercel/node"
     }
   }
