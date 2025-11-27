@@ -5,6 +5,7 @@ import { OutfitGenerator } from './outfitGenerator';
 import SmartOutfitGenerator from './smartOutfitGenerator';
 import CountryRoadService from './countryRoadService';
 import PinterestBoardService, { StyleInsight } from './pinterestBoardService';
+import { withTimeout } from '../utils/timeout';
 
 export interface OutfitItem {
   id: string;
@@ -143,7 +144,12 @@ export class OracleService {
       }
       
       console.log('Fetching wardrobe items...');
-      const wardrobeItems = await WardrobeService.getUserWardrobe(userId);
+      // Add 8 second timeout for wardrobe items
+      const wardrobeItems = await withTimeout(
+        WardrobeService.getUserWardrobe(userId),
+        8000,
+        'Wardrobe items fetch timeout'
+      );
       console.log('Fetched wardrobe items:', wardrobeItems);
       console.log('Wardrobe items length:', wardrobeItems?.length || 'undefined');
       
@@ -164,8 +170,8 @@ export class OracleService {
       return convertedItems;
     } catch (error) {
       console.error('Error fetching wardrobe items:', error);
-      console.error('Error details:', error.message);
-      console.error('Error stack:', error.stack);
+      console.error('Error details:', error instanceof Error ? error.message : 'Unknown error');
+      // Return fallback items on timeout or error
       return this.getFallbackWardrobeItems();
     }
   }
@@ -174,7 +180,12 @@ export class OracleService {
   static async getRetailerItems(): Promise<OutfitItem[]> {
     try {
       console.log('Fetching Country Road items...');
-      const countryRoadItems = await CountryRoadService.getItems();
+      // Add 5 second timeout for retailer items
+      const countryRoadItems = await withTimeout(
+        CountryRoadService.getItems(),
+        5000,
+        'Retailer items fetch timeout'
+      );
       
       return countryRoadItems.map(item => CountryRoadService.convertToOutfitItem(item));
     } catch (error) {
@@ -259,10 +270,46 @@ export class OracleService {
 
 
   // Generate outfit combinations based on occasion and weather
+  // Optimized with caching for <300ms target
   static async generateOutfitCombinations(
     occasion: string = 'casual',
-    weather: string = '22°',
+    weather?: string, // Remove default - must be provided or fetched
     count: number = 3,
+    userId?: string
+  ): Promise<OutfitCombination[]> {
+    // If weather not provided, fetch it from API
+    if (!weather) {
+      try {
+        const { WeatherService } = await import('./weatherService');
+        const weatherData = await WeatherService.getRealTimeWeather(true);
+        weather = `${weatherData.temperature}°`;
+        console.log(`🌤️ Fetched real-time weather for outfit generation: ${weather}`);
+      } catch (error) {
+        console.warn('⚠️ Could not fetch weather, using estimate');
+        weather = '20°'; // More neutral default than 22°
+      }
+    }
+    // Use performance service for caching if userId provided
+    if (userId) {
+      const PerformanceService = (await import('./performanceService')).default;
+      return PerformanceService.getCachedOrGenerateOutfits(
+        userId,
+        occasion,
+        weather,
+        count,
+        () => this.generateOutfitsInternal(occasion, weather, count, userId)
+      );
+    }
+    
+    // No caching for anonymous users
+    return this.generateOutfitsInternal(occasion, weather, count, userId);
+  }
+
+  // Internal generation method (separated for caching)
+  private static async generateOutfitsInternal(
+    occasion: string,
+    weather: string,
+    count: number,
     userId?: string
   ): Promise<OutfitCombination[]> {
     // Parse weather data
@@ -282,16 +329,31 @@ export class OracleService {
     const smartWardrobeItems = this.convertToSmartItems(wardrobeItems);
     const smartRetailerItems = this.convertToSmartItems(retailerItems);
 
-    // Use smart outfit generator
-    const smartOutfits = await SmartOutfitGenerator.generateSmartOutfits(
-      occasion,
-      weatherData,
-      smartWardrobeItems,
-      smartRetailerItems,
-      count
-    );
-
-    return smartOutfits;
+    // Use smart outfit generator with timeout
+    try {
+      const smartOutfits = await Promise.race([
+        SmartOutfitGenerator.generateSmartOutfits(
+          occasion,
+          weatherData,
+          smartWardrobeItems,
+          smartRetailerItems,
+          count
+        ),
+        new Promise<OutfitCombination[]>((_, reject) =>
+          setTimeout(() => reject(new Error('Smart outfit generation timeout')), 8000)
+        ),
+      ]);
+      
+      if (smartOutfits.length === 0) {
+        console.warn('⚠️ Smart generator returned empty, using fallback');
+        return await this.getFallbackOutfits(occasion, count, weather);
+      }
+      
+      return smartOutfits;
+    } catch (error) {
+      console.warn('⚠️ Smart outfit generation failed, using fallback:', error);
+      return await this.getFallbackOutfits(occasion, count, weather);
+    }
   }
 
   // Get current season based on temperature
@@ -620,19 +682,97 @@ export class OracleService {
   }
 
   // Generate single outfit for instant generation
-  static async generateInstantOutfit(weather: string = '22°', userId?: string): Promise<OutfitCombination> {
+  static async generateInstantOutfit(weather?: string, userId?: string): Promise<OutfitCombination> {
+    if (!weather) {
+      try {
+        const { WeatherService } = await import('./weatherService');
+        const weatherData = await WeatherService.getRealTimeWeather(true);
+        weather = `${weatherData.temperature}°`;
+      } catch (error) {
+        weather = '20°';
+      }
+    }
     const combinations = await this.generateOutfitCombinations('casual', weather, 1, userId);
     return combinations[0] || await this.getDefaultOutfit(userId);
   }
 
   // Generate event-specific outfit
-  static async generateEventOutfit(occasion: string, weather: string = '22°', userId?: string): Promise<OutfitCombination> {
+  static async generateEventOutfit(occasion: string, weather?: string, userId?: string): Promise<OutfitCombination> {
+    if (!weather) {
+      try {
+        const { WeatherService } = await import('./weatherService');
+        const weatherData = await WeatherService.getRealTimeWeather(true);
+        weather = `${weatherData.temperature}°`;
+      } catch (error) {
+        weather = '20°';
+      }
+    }
     const combinations = await this.generateOutfitCombinations(occasion, weather, 1, userId);
     return combinations[0] || await this.getDefaultOutfit(userId);
   }
 
+  // Get fallback outfits when generation fails
+  static async getFallbackOutfits(occasion: string = 'casual', count: number = 3, weather?: string): Promise<OutfitCombination[]> {
+    // Fetch real weather if not provided
+    if (!weather) {
+      try {
+        const { WeatherService } = await import('./weatherService');
+        const weatherData = await WeatherService.getRealTimeWeather(true);
+        weather = `${weatherData.temperature}°`;
+      } catch (error) {
+        weather = '20°';
+      }
+    }
+    
+    const fallbackItems = this.getFallbackWardrobeItems();
+    const combinations: OutfitCombination[] = [];
+    
+    for (let i = 0; i < count && i < 3; i++) {
+      const baseItems = [
+        fallbackItems[0], // White T-shirt
+        fallbackItems[1], // Blue Jeans
+        fallbackItems[3], // White Sneakers
+      ];
+      
+      combinations.push({
+        id: `fallback-${occasion}-${i}-${Date.now()}`,
+        items: baseItems,
+        summary: 'A timeless combination that works for any occasion. This classic ensemble balances comfort with style, making it perfect for everyday wear.',
+        confidence: 85,
+        occasion: occasion.charAt(0).toUpperCase() + occasion.slice(1),
+        weather: weather,
+        colorHarmony: 'Neutral and versatile - works with any skin tone and hair color',
+        styleNotes: [
+          'Classic combination that never goes out of style',
+          'Comfortable for all-day wear',
+          'Easy to accessorize with different pieces'
+        ],
+        fitAdvice: 'Keep proportions balanced - if the top is loose, consider a more fitted bottom',
+        whyItWorks: [
+          'Timeless combination that works for any occasion',
+          'Comfortable and versatile for all-day wear',
+          'Easy to style and accessorize with different pieces',
+          'Classic colors that flatter most skin tones',
+          'Can be dressed up or down depending on accessories'
+        ],
+      });
+    }
+    
+    return combinations;
+  }
+
   // Default fallback outfit
   private static async getDefaultOutfit(userId?: string): Promise<OutfitCombination> {
+    // Fetch real weather
+    let weather = '20°';
+    try {
+      const { WeatherService } = await import('./weatherService');
+      const weatherData = await WeatherService.getRealTimeWeather(true);
+      weather = `${weatherData.temperature}°`;
+    } catch (error) {
+      console.warn('Could not fetch weather for default outfit');
+    }
+    
     const wardrobeItems = await this.getRealWardrobeItems(userId);
     return {
       id: 'default',
@@ -644,7 +784,7 @@ export class OracleService {
       summary: 'A timeless combination that works for any occasion. This classic ensemble balances comfort with style, making it perfect for everyday wear.',
       confidence: 85,
       occasion: 'Casual',
-      weather: '22°',
+      weather: weather,
       colorHarmony: 'Neutral and versatile - works with any skin tone and hair color',
       styleNotes: [
         'Classic combination that never goes out of style',

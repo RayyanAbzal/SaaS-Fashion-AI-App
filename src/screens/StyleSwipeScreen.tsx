@@ -379,7 +379,7 @@ export default function StyleSwipeScreen() {
         } catch (fallbackError) {
           // If even fallback fails, use minimal mock outfits
           console.error('⚠️ Fallback outfit generation also failed, using minimal outfits');
-          generatedOutfits = OracleService.getFallbackOutfits(occasion, 3);
+          generatedOutfits = await OracleService.getFallbackOutfits(occasion, 3, actualTemp);
         }
       }
 
@@ -388,7 +388,7 @@ export default function StyleSwipeScreen() {
       if (generatedOutfits.length === 0) {
         // If no outfits, try to use fallback outfits
         console.warn('⚠️ No outfits generated, using fallback outfits');
-        const fallbackOutfits = OracleService.getFallbackOutfits(occasion, 5);
+        const fallbackOutfits = await OracleService.getFallbackOutfits(occasion, 5, actualTemp);
         if (fallbackOutfits.length > 0) {
           setOutfits(fallbackOutfits);
           setCurrentIndex(0);

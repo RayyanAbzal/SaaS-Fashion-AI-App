@@ -177,15 +177,24 @@ export class WeatherService {
           
           return weatherData;
         },
-        async () => {
-          // Fallback to mock weather if circuit breaker is open
-          console.warn('⚠️ Weather API circuit breaker is open, using fallback temperature');
-          return {
-            temperature: 22,
-            condition: 'Partly Cloudy',
-            icon: 'partly-sunny'
-          };
-        },
+          async () => {
+            // Fallback if circuit breaker is open - try to estimate from location
+            if (lat && lon) {
+              const estimatedTemp = this.estimateTemperatureFromLocation(lat, lon);
+              console.warn(`⚠️ Weather API circuit breaker open, using location estimate: ${estimatedTemp}°C`);
+              return {
+                temperature: estimatedTemp,
+                condition: 'Unknown',
+                icon: 'partly-sunny'
+              };
+            }
+            console.warn('⚠️ Weather API circuit breaker open, using default 20°C');
+            return {
+              temperature: 20,
+              condition: 'Unknown',
+              icon: 'partly-sunny'
+            };
+          },
         {
           failureThreshold: 5,
           timeout: 10000, // 10 second timeout for better reliability
@@ -222,11 +231,24 @@ export class WeatherService {
       }
     }
     
-    // Final fallback to mock weather data
-    console.warn('⚠️ Weather API not available, using fallback temperature (22°C)');
+    // Final fallback - only if API key is missing or all attempts failed
+    // Try to get location-based estimate if we have coordinates
+    if (lat && lon) {
+      // Estimate temperature based on location (rough approximation)
+      // This is better than a fixed 22°C
+      const estimatedTemp = this.estimateTemperatureFromLocation(lat, lon);
+      console.warn(`⚠️ Weather API unavailable, using location-based estimate: ${estimatedTemp}°C`);
+      return {
+        temperature: estimatedTemp,
+        condition: 'Unknown',
+        icon: 'partly-sunny'
+      };
+    }
+    
+    console.warn('⚠️ Weather API not available and no location, using default 20°C');
     return {
-      temperature: 22,
-      condition: 'Partly Cloudy',
+      temperature: 20, // Changed from 22 to 20 as a more neutral default
+      condition: 'Unknown',
       icon: 'partly-sunny'
     };
   }
@@ -234,6 +256,31 @@ export class WeatherService {
   // Get weather without location (for demo/testing)
   static async getCurrentWeatherSimple(): Promise<WeatherData> {
     return this.getCurrentWeather();
+  }
+
+  // Estimate temperature from location (rough approximation based on latitude)
+  private static estimateTemperatureFromLocation(lat: number, lon: number): number {
+    // Rough temperature estimation based on latitude and current month
+    const month = new Date().getMonth(); // 0-11
+    const isSouthernHemisphere = lat < 0;
+    const absLat = Math.abs(lat);
+    
+    // Base temperature varies by latitude
+    let baseTemp = 25 - (absLat * 0.5); // Rough approximation
+    
+    // Adjust for season (southern hemisphere seasons are opposite)
+    if (isSouthernHemisphere) {
+      // Southern hemisphere: Dec-Feb is summer, Jun-Aug is winter
+      if (month >= 11 || month <= 1) baseTemp += 5; // Summer
+      else if (month >= 5 && month <= 7) baseTemp -= 5; // Winter
+    } else {
+      // Northern hemisphere: Jun-Aug is summer, Dec-Feb is winter
+      if (month >= 5 && month <= 7) baseTemp += 5; // Summer
+      else if (month >= 11 || month <= 1) baseTemp -= 5; // Winter
+    }
+    
+    // Clamp to reasonable range
+    return Math.round(Math.max(5, Math.min(35, baseTemp)));
   }
 
   // Get weather recommendations for outfit suggestions

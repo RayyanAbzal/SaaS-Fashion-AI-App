@@ -37,30 +37,126 @@ class CountryRoadService {
     try {
       // Check cache first
       if (this.cachedItems.length > 0 && Date.now() - this.lastFetch < this.cacheExpiry) {
-        console.log('Using cached Country Road items');
+        console.log(`✅ Using cached Country Road items (${this.cachedItems.length} items)`);
         return this.cachedItems;
       }
 
-      console.log('Fetching Country Road items from server...');
-      const response = await fetch(`${this.baseUrl}/country-road-items`);
+      console.log('🛍️ Fetching Country Road items from API...');
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Try the country-road-items endpoint first
+      let response: Response;
+      let data: any;
+      
+      try {
+        // Create abort controller for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        
+        response = await fetch(`${this.baseUrl}/country-road-items`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        data = await response.json();
+        
+        if (data.success && data.items && data.items.length > 0) {
+          this.cachedItems = data.items;
+          this.lastFetch = Date.now();
+          console.log(`✅ Successfully fetched ${this.cachedItems.length} Country Road items from API`);
+          return this.cachedItems;
+        } else {
+          console.warn('⚠️ API returned empty items array, trying retail-products endpoint...');
+          throw new Error('Empty items array from country-road-items');
+        }
+      } catch (firstError) {
+        console.log('⚠️ country-road-items endpoint failed, trying retail-products endpoint...');
+        
+        // Fallback to retail-products endpoint
+        try {
+          const controller2 = new AbortController();
+          const timeoutId2 = setTimeout(() => controller2.abort(), 10000);
+          
+          response = await fetch(`${this.baseUrl}/retail-products`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+            signal: controller2.signal,
+          });
+          
+          clearTimeout(timeoutId2);
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          data = await response.json();
+          
+          if (data.success && data.products && data.products.length > 0) {
+            // Convert retail products to Country Road items format
+            this.cachedItems = data.products
+              .filter((p: any) => p.brand?.toLowerCase().includes('country road') || !p.brand)
+              .slice(0, 50) // Limit to 50 items
+              .map((p: any) => this.convertRetailProductToCountryRoadItem(p));
+            this.lastFetch = Date.now();
+            console.log(`✅ Successfully fetched ${this.cachedItems.length} items from retail-products API`);
+            return this.cachedItems;
+          }
+        } catch (secondError) {
+          console.error('❌ Both API endpoints failed:', secondError);
+          throw secondError;
+        }
       }
 
-      const data = await response.json();
-      this.cachedItems = data.items || [];
-      this.lastFetch = Date.now();
-      
-      console.log(`Fetched ${this.cachedItems.length} Country Road items`);
-      return this.cachedItems;
+      // If we get here, both endpoints returned empty or failed
+      throw new Error('No items available from API');
 
     } catch (error) {
-      console.error('Error fetching Country Road items:', error);
-      console.log('Server may not be running. Using fallback items.');
+      console.error('❌ Error fetching Country Road items:', error);
+      console.log('⚠️ Using fallback items as last resort');
       // Return fallback items if server is unavailable
-      return this.getFallbackItems();
+      const fallbackItems = this.getFallbackItems();
+      console.log(`📦 Returning ${fallbackItems.length} fallback items`);
+      return fallbackItems;
     }
+  }
+
+  // Convert retail product to Country Road item format
+  private static convertRetailProductToCountryRoadItem(product: any): CountryRoadItem {
+    return {
+      id: product.id || `cr-${Date.now()}-${Math.random()}`,
+      name: product.name || 'Unknown Item',
+      price: product.price || 0,
+      originalPrice: product.originalPrice,
+      image: product.image || 'https://via.placeholder.com/300x300?text=No+Image',
+      category: product.category || 'Unknown',
+      subcategory: product.subcategory || 'Unknown',
+      color: product.color || 'Unknown',
+      size: product.size || 'M',
+      brand: product.brand || 'Country Road',
+      material: product.material || 'Unknown',
+      description: product.description || '',
+      url: product.url || '',
+      inStock: product.inStock !== false,
+      seasonality: product.seasonality || ['all'],
+      formality: product.formality || 'casual',
+      weatherSuitability: product.weatherSuitability || {
+        minTemp: 0,
+        maxTemp: 40,
+        conditions: ['all']
+      }
+    };
   }
 
   // Get items by category
