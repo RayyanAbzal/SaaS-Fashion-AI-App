@@ -1,4 +1,11 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
+import { asyncHandler, errorHandler } from './utils/errorHandler';
+import { handleCORS } from './utils/cors';
+import { rateLimitMiddleware } from './middleware/rateLimit';
+import { performanceMiddleware } from './middleware/performance';
+import { outfitRequestSchema, validateRequest } from './utils/validation';
+import { cache, cacheKeys } from './utils/cache';
+import { optionalAuth } from './middleware/auth';
 
 interface OutfitAdvice {
   id: string;
@@ -65,24 +72,43 @@ const outfitAdvice: OutfitAdvice[] = [
   }
 ];
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS
+  if (!handleCORS(req, res)) return;
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  // Performance tracking
+  performanceMiddleware(req, res);
+
+  // Rate limiting
+  const rateLimitPassed = await rateLimitMiddleware(req, res);
+  if (!rateLimitPassed) return;
+
+  // Optional authentication (for analytics)
+  await optionalAuth(req as any, res);
 
   if (req.method !== 'GET') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+    return res.status(405).json({ 
+      success: false,
+      error: 'Method not allowed' 
+    });
   }
 
   try {
+    // Validate request
+    validateRequest(outfitRequestSchema)(req, res);
+
     const { occasion, weather } = req.query;
+    
+    // Check cache
+    const cacheKey = cacheKeys.outfitAdvice(
+      occasion as string,
+      weather as string
+    );
+    const cached = await cache.get(cacheKey);
+    
+    if (cached) {
+      return res.status(200).json(cached);
+    }
     
     let filteredAdvice = [...outfitAdvice];
     
@@ -100,9 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
     }
     
-    console.log(`Returning ${filteredAdvice.length} outfit advice items`);
-    
-    res.status(200).json({
+    const response = {
       success: true,
       advice: filteredAdvice,
       count: filteredAdvice.length,
@@ -110,13 +134,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         occasion,
         weather
       }
-    });
+    };
+    
+    // Cache for 1 hour (static content)
+    await cache.set(cacheKey, response, 3600);
+    
+    res.status(200).json(response);
 
   } catch (error) {
-    console.error('Error fetching outfit advice:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Failed to fetch outfit advice' 
-    });
+    errorHandler(error as Error, req, res);
   }
 }
+
+export default asyncHandler(handler);

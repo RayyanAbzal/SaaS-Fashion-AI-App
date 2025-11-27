@@ -122,48 +122,86 @@ const fallbackItems: CountryRoadItem[] = [
   }
 ];
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+import { asyncHandler, errorHandler } from './utils/errorHandler';
+import { handleCORS } from './utils/cors';
+import { rateLimitMiddleware } from './middleware/rateLimit';
+import { performanceMiddleware } from './middleware/performance';
+import { optionalAuth } from './middleware/auth';
+import { cache, cacheKeys } from './utils/cache';
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS
+  if (!handleCORS(req, res)) return;
+
+  // Performance tracking
+  performanceMiddleware(req, res);
+
+  // Rate limiting
+  const rateLimitPassed = await rateLimitMiddleware(req, res);
+  if (!rateLimitPassed) return;
+
+  // Optional authentication
+  await optionalAuth(req as any, res);
 
   if (req.method !== 'GET') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+    return res.status(405).json({ 
+      success: false,
+      error: 'Method not allowed' 
+    });
   }
 
   try {
+    const category = req.query.category as string;
+    
+    // Check cache
+    const cacheKey = cacheKeys.countryRoadItems(category);
+    const cached = await cache.get(cacheKey);
+    
+    if (cached) {
+      return res.status(200).json(cached);
+    }
+    
     console.log('Fetching Country Road items...');
     
     // For now, return fallback items
     // In production, you would implement web scraping here
-    const items = fallbackItems;
+    let items = fallbackItems;
     
-    console.log(`Returning ${items.length} Country Road items`);
+    // Filter by category if provided
+    if (category) {
+      items = items.filter(item => 
+        item.category.toLowerCase() === category.toLowerCase()
+      );
+    }
     
-    res.status(200).json({
+    const response = {
       success: true,
       items: items,
       count: items.length,
-      source: 'fallback'
-    });
+      source: 'fallback',
+      category: category || 'all'
+    };
+    
+    // Cache for 30 minutes
+    await cache.set(cacheKey, response, 1800);
+    
+    console.log(`Returning ${items.length} Country Road items`);
+    res.status(200).json(response);
 
   } catch (error) {
     console.error('Error fetching Country Road items:', error);
     
     // Return fallback items on error
-    res.status(200).json({
+    const response = {
       success: true,
       items: fallbackItems,
       count: fallbackItems.length,
       source: 'fallback',
       error: 'Using fallback data'
-    });
+    };
+    
+    res.status(200).json(response);
   }
 }
+
+export default asyncHandler(handler);

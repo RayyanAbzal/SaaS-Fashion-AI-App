@@ -1,6 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import { asyncHandler, errorHandler } from './utils/errorHandler';
+import { handleCORS } from './utils/cors';
+import { rateLimitMiddleware } from './middleware/rateLimit';
+import { performanceMiddleware } from './middleware/performance';
+import { optionalAuth } from './middleware/auth';
+import { validateRequest } from './utils/validation';
+import { sanitizeInput } from './utils/sanitize';
+import { z } from 'zod';
+import { cache, cacheKeys } from './utils/cache';
 
 interface PinterestBoardAnalysis {
   board: {
@@ -42,38 +51,68 @@ interface PinterestBoardAnalysis {
   processingTime: number;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+// Validation schema
+const pinterestBoardSchema = z.object({
+  boardUrl: z.string().url('Invalid board URL'),
+});
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS
+  if (!handleCORS(req, res)) return;
+
+  // Performance tracking
+  performanceMiddleware(req, res);
+
+  // Rate limiting
+  const rateLimitPassed = await rateLimitMiddleware(req, res);
+  if (!rateLimitPassed) return;
+
+  // Optional authentication
+  await optionalAuth(req as any, res);
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({
+      success: false,
+      error: 'Method not allowed'
+    });
   }
 
   const startTime = Date.now();
 
   try {
-    const { boardUrl } = req.body;
+    // Validate request
+    validateRequest(pinterestBoardSchema)(req, res);
 
-    if (!boardUrl) {
-      return res.status(400).json({ error: 'Board URL is required' });
+    const { boardUrl } = req.body;
+    const sanitizedUrl = sanitizeInput(boardUrl);
+
+    if (!sanitizedUrl) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Board URL is required' 
+      });
     }
 
-    console.log('🎨 Analyzing Pinterest board:', boardUrl);
+    console.log('🎨 Analyzing Pinterest board:', sanitizedUrl);
 
     // Validate Pinterest board URL
-    if (!isValidBoardUrl(boardUrl)) {
-      return res.status(400).json({ error: 'Invalid Pinterest board URL' });
+    if (!isValidBoardUrl(sanitizedUrl)) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid Pinterest board URL' 
+      });
+    }
+
+    // Check cache
+    const cacheKey = cacheKeys.pinterestAnalysis(sanitizedUrl);
+    const cached = await cache.get(cacheKey);
+    
+    if (cached) {
+      return res.status(200).json(cached);
     }
 
     // Extract board information
-    const boardInfo = await extractBoardInfo(boardUrl);
+    const boardInfo = await extractBoardInfo(sanitizedUrl);
     
     // Analyze board content (simulated AI analysis)
     const styleInsights = await analyzeBoardStyle(boardInfo);
@@ -93,19 +132,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       processingTime: (Date.now() - startTime) / 1000
     };
 
-    console.log('✅ Board analysis complete:', analysis);
+    // Cache for 1 hour
+    await cache.set(cacheKey, analysis, 3600);
 
+    console.log('✅ Board analysis complete:', analysis);
     return res.status(200).json(analysis);
 
   } catch (error) {
     console.error('❌ Error analyzing Pinterest board:', error);
     
     // Return fallback analysis
-    const fallbackAnalysis = generateFallbackAnalysis(req.body.boardUrl);
+    const fallbackAnalysis = generateFallbackAnalysis(req.body?.boardUrl || '');
     
     return res.status(200).json(fallbackAnalysis);
   }
 }
+
+export default asyncHandler(handler);
 
 function isValidBoardUrl(url: string): boolean {
   const boardRegex = /^https?:\/\/.*pinterest\.(com|com\.au|co\.nz|nz)\/[^\/]+\/[^\/]+\/?/;

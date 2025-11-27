@@ -1,4 +1,10 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
+import { asyncHandler, errorHandler } from './utils/errorHandler';
+import { handleCORS } from './utils/cors';
+import { rateLimitMiddleware } from './middleware/rateLimit';
+import { performanceMiddleware } from './middleware/performance';
+import { optionalAuth } from './middleware/auth';
+import { cache, cacheKeys } from './utils/cache';
 
 interface RetailProduct {
   id: string;
@@ -141,24 +147,39 @@ const retailProducts: RetailProduct[] = [
   }
 ];
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Enable CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+async function handler(req: VercelRequest, res: VercelResponse) {
+  // Handle CORS
+  if (!handleCORS(req, res)) return;
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
+  // Performance tracking
+  performanceMiddleware(req, res);
+
+  // Rate limiting
+  const rateLimitPassed = await rateLimitMiddleware(req, res);
+  if (!rateLimitPassed) return;
+
+  // Optional authentication
+  await optionalAuth(req as any, res);
 
   if (req.method !== 'GET') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
+    return res.status(405).json({
+      success: false,
+      error: 'Method not allowed'
+    });
   }
 
   try {
     const { category, color, formality, minTemp, maxTemp } = req.query;
+    
+    // Create cache key from filters
+    const filterKey = JSON.stringify({ category, color, formality, minTemp, maxTemp });
+    const cacheKey = cacheKeys.retailProducts(filterKey);
+    
+    // Check cache
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return res.status(200).json(cached);
+    }
     
     let filteredProducts = [...retailProducts];
     
@@ -194,9 +215,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
     }
     
-    console.log(`Returning ${filteredProducts.length} retail products`);
-    
-    res.status(200).json({
+    const response = {
       success: true,
       products: filteredProducts,
       count: filteredProducts.length,
@@ -207,13 +226,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         minTemp,
         maxTemp
       }
-    });
+    };
+    
+    // Cache for 30 minutes
+    await cache.set(cacheKey, response, 1800);
+    
+    console.log(`Returning ${filteredProducts.length} retail products`);
+    res.status(200).json(response);
 
   } catch (error) {
-    console.error('Error fetching retail products:', error);
-    res.status(500).json({ 
-      success: false,
-      error: 'Failed to fetch retail products' 
-    });
+    errorHandler(error as Error, req, res);
   }
 }
+
+export default asyncHandler(handler);
