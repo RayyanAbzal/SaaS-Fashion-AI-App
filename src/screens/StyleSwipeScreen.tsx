@@ -318,11 +318,27 @@ export default function StyleSwipeScreen() {
       };
       
       // Use actual temperature from weather service if available
-      const actualTemp = autoWeather?.tempC 
-        ? `${autoWeather.tempC}°` 
-        : tempByWeather[weather];
-      
-      console.log(`🌡️ Using temperature: ${actualTemp} (${autoWeather ? 'from weather service' : 'fallback mapping'})`);
+      // If autoWeather is not set, try to fetch it now
+      let actualTemp: string;
+      if (autoWeather?.tempC) {
+        actualTemp = `${autoWeather.tempC}°`;
+        console.log(`🌡️ Using temperature: ${actualTemp} (from weather service)`);
+      } else {
+        // Try to fetch weather synchronously if not already set
+        try {
+          const weatherData = await WeatherService.getRealTimeWeather(false); // Don't force refresh, use cache
+          actualTemp = `${weatherData.temperature}°`;
+          // Update autoWeather state for next time
+          const label: typeof weather = weatherData.temperature <= 12 ? 'cold' : weatherData.temperature <= 18 ? 'mild' : weatherData.temperature <= 26 ? 'warm' : 'hot';
+          setAutoWeather({ tempC: weatherData.temperature, label });
+          setWeather(label);
+          console.log(`🌡️ Fetched temperature on-demand: ${actualTemp} (from API)`);
+        } catch (error) {
+          // Fallback to mapping if weather fetch fails
+          actualTemp = tempByWeather[weather];
+          console.log(`🌡️ Using temperature: ${actualTemp} (fallback mapping - weather fetch failed)`);
+        }
+      }
 
       // Add timeout to prevent hanging (reduced to 10 seconds for faster feedback)
       const outfitPromise = (async () => {

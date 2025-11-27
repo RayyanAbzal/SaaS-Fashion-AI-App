@@ -26,8 +26,12 @@ export interface CountryRoadItem {
 }
 
 class CountryRoadService {
-  // Update this URL to your Vercel deployment URL
-  private static baseUrl = 'https://saa-s-fashion-ai-app3.vercel.app/api';
+  // Try to use environment variable or localhost for development
+  // In production, this should be your Vercel deployment URL
+  private static baseUrl = process.env.EXPO_PUBLIC_API_URL 
+    || process.env.API_URL 
+    || 'https://saa-s-fashion-ai-app3.vercel.app/api'
+    || 'http://localhost:3000/api'; // Fallback to localhost for development
   private static cachedItems: CountryRoadItem[] = [];
   private static lastFetch: number = 0;
   private static cacheExpiry = 30 * 60 * 1000; // 30 minutes
@@ -41,7 +45,7 @@ class CountryRoadService {
         return this.cachedItems;
       }
 
-      console.log('🛍️ Fetching Country Road items from API...');
+      console.log(`🛍️ Fetching Country Road items from API: ${this.baseUrl}...`);
       
       // Try the country-road-items endpoint first
       let response: Response;
@@ -52,7 +56,10 @@ class CountryRoadService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         
-        response = await fetch(`${this.baseUrl}/country-road-items`, {
+        const url = `${this.baseUrl}/country-road-items`;
+        console.log(`📡 Attempting to fetch from: ${url}`);
+        
+        response = await fetch(url, {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
@@ -64,6 +71,10 @@ class CountryRoadService {
         clearTimeout(timeoutId);
         
         if (!response.ok) {
+          if (response.status === 404) {
+            console.warn(`⚠️ Endpoint not found (404): ${url} - endpoint may not be deployed`);
+            throw new Error(`Endpoint not found: ${response.status}`);
+          }
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
@@ -98,6 +109,10 @@ class CountryRoadService {
           clearTimeout(timeoutId2);
           
           if (!response.ok) {
+            if (response.status === 404) {
+              console.warn(`⚠️ Retail products endpoint also not found (404) - using fallback items`);
+              throw new Error(`Retail products endpoint not found: ${response.status}`);
+            }
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
