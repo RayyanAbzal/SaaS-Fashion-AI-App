@@ -60,8 +60,8 @@
       "OPENAI_API_KEY": "EXPO_PUBLIC_OPENAI_API_KEY",
       "SUPABASE_URL": "EXPO_PUBLIC_SUPABASE_URL",
       "SUPABASE_ANON_KEY": "EXPO_PUBLIC_SUPABASE_ANON_KEY",
-      "OPENWEATHER_API_KEY": "aecef3b72e2592271ee8bbeb9d2c0566",
-      "openWeatherApiKey": "aecef3b72e2592271ee8bbeb9d2c0566",
+      "OPENWEATHER_API_KEY": "dea5bf614a1c5eee965149b436f21b39",
+      "openWeatherApiKey": "dea5bf614a1c5eee965149b436f21b39",
       "eas": {
         "projectId": "your-eas-project-id"
       }

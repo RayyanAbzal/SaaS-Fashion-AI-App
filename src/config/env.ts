@@ -8,7 +8,7 @@ interface Env {
 }
 
 export const env: Env = {
-  OPENWEATHER_API_KEY: '943f34fc6b214df6bc0221722250501',
+  OPENWEATHER_API_KEY: 'dea5bf614a1c5eee965149b436f21b39',
   OPENAI_API_KEY: Constants.expoConfig?.extra?.openaiApiKey || '',
   SUPABASE_URL: Constants.expoConfig?.extra?.supabaseUrl || '',
   SUPABASE_ANON_KEY: Constants.expoConfig?.extra?.supabaseAnonKey || '',
