@@ -9,8 +9,9 @@ import {
   Dimensions,
   Animated,
   Vibration,
+  ScrollView,
 } from 'react-native';
-import { PanGestureHandler, State } from 'react-native-gesture-handler';
+import { PanGestureHandler, State, GestureHandlerStateChangeEvent } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { OutfitCombination } from '../services/oracleService';
@@ -57,9 +58,10 @@ export default function StyleSwipeCard({
     { useNativeDriver: true }
   );
 
-  const onHandlerStateChange = (event: any) => {
+  const onHandlerStateChange = (event: GestureHandlerStateChangeEvent) => {
     if (event.nativeEvent.state === State.END) {
-      const { translationX, velocityX } = event.nativeEvent;
+      const translationX = event.nativeEvent.translationX as number;
+      const velocityX = event.nativeEvent.velocityX as number;
       
       // Only handle horizontal swipes
       if (translationX > SWIPE_THRESHOLD || velocityX > 500) {
@@ -150,29 +152,50 @@ export default function StyleSwipeCard({
           },
         ]}
       >
-        {/* Score Badge + Confidence Tag */}
+        {/* Score Badge - More prominent */}
         <View style={styles.scoreBadge}>
+          <Ionicons name="star" size={14} color={Colors.text} />
           <Text style={styles.scoreText}>{Math.round((outfit.confidence || 80) / 10)}/10</Text>
         </View>
-        <View style={styles.confidenceTag}>
-          <Text style={styles.confidenceTagText}>Why this works</Text>
-        </View>
-        {/* Outfit Items Display */}
+        
+        <ScrollView 
+          style={styles.cardContentScroll}
+          contentContainerStyle={styles.cardContentScrollContainer}
+          showsVerticalScrollIndicator={true}
+        >
+        {/* Outfit Items Display - Bigger images, cleaner layout */}
         <View style={styles.outfitPreview}>
           {outfit.items && outfit.items.length > 0 ? (
-            <View style={styles.outfitItemsGrid}>
-              {outfit.items.slice(0, 4).map((item, index) => (
-                <TouchableOpacity key={index} style={styles.outfitItemCard} onPress={() => onItemSwapRequest && onItemSwapRequest(index)}>
-                  <Image 
-                    source={{ uri: item.image }} 
-                    style={styles.outfitItemImage}
-                  />
-                  <Text style={styles.outfitItemName} numberOfLines={1}>
+            <View style={styles.outfitItemsContainer}>
+              {outfit.items.slice(0, 3).map((item, index) => (
+                <TouchableOpacity 
+                  key={`${item.id}-${index}`} 
+                  style={styles.outfitItemCard} 
+                  onPress={() => onItemSwapRequest && onItemSwapRequest(index)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.itemImageWrapper}>
+                    <Image 
+                      source={{ uri: item.image }} 
+                      style={styles.outfitItemImage}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.itemBadge}>
+                      <Ionicons 
+                        name={item.isFromWardrobe ? "shirt" : "storefront"} 
+                        size={12} 
+                        color={Colors.text} 
+                      />
+                    </View>
+                  </View>
+                  <Text style={styles.outfitItemName} numberOfLines={2}>
                     {item.name}
                   </Text>
-                  <Text style={styles.outfitItemSource}>
-                    {item.source === 'wardrobe' ? 'Your Wardrobe' : 'Store Item'}
-                  </Text>
+                  <View style={styles.itemSourceBadge}>
+                    <Text style={styles.outfitItemSource}>
+                      {item.isFromWardrobe ? 'Yours' : 'Shop'}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -184,30 +207,56 @@ export default function StyleSwipeCard({
           )}
         </View>
 
-        {/* Outfit Info */}
+        {/* Outfit Info - Clean and focused */}
         <View style={styles.outfitInfo}>
-          <Text style={styles.outfitTitle}>{outfit.summary}</Text>
-          <Text style={styles.confidenceText}>
-            {outfit.confidence}% confidence • {outfit.occasion}
-          </Text>
-          
-          {/* Simple style explanation */}
-          <View style={styles.styleExplanation}>
-            <Text style={styles.explanationText}>
-              {outfit.colorHarmony && `• ${outfit.colorHarmony} colors`}
-              {outfit.weather && `\n• Perfect for ${outfit.weather}`}
-              {outfit.occasion && `\n• Great for ${outfit.occasion}`}
+          {/* Confidence score with explanation */}
+          <View style={styles.confidenceHeader}>
+            <View style={styles.confidenceCircle}>
+              <Text style={styles.confidenceNumber}>{outfit.confidence || 85}%</Text>
+              <Text style={styles.confidenceLabel}>Match</Text>
+            </View>
+            <View style={styles.confidenceDetails}>
+              <Text style={styles.occasionBadge}>{outfit.occasion || 'Casual'}</Text>
+              <Text style={styles.weatherBadge}>{outfit.weather || '22°'}</Text>
+            </View>
+          </View>
+
+          {/* Confidence explanation */}
+          <View style={styles.confidenceExplanation}>
+            <Ionicons name="information-circle" size={16} color={Colors.primary} />
+            <Text style={styles.confidenceExplanationText}>
+              {outfit.confidence >= 90 
+                ? `Excellent match! This outfit perfectly aligns with your style, the ${outfit.occasion?.toLowerCase() || 'casual'} occasion, and current weather conditions.`
+                : outfit.confidence >= 75
+                ? `Great match! This combination works well for ${outfit.occasion?.toLowerCase() || 'casual'} occasions and complements your style preferences.`
+                : outfit.confidence >= 60
+                ? `Good match! This outfit suits the ${outfit.occasion?.toLowerCase() || 'casual'} occasion and weather, with room to personalize.`
+                : `This outfit is suitable for ${outfit.occasion?.toLowerCase() || 'casual'} occasions. Consider adding your personal touch.`}
             </Text>
           </View>
 
-          {/* One-tap Tweak */}
-          {tweakSuggestion ? (
-            <TouchableOpacity style={styles.tweakButton} onPress={triggerTweakAnimation}>
-              <Ionicons name="sparkles" size={16} color={Colors.text} />
-              <Text style={styles.tweakButtonText}>Tweak: {tweakSuggestion}</Text>
-            </TouchableOpacity>
-          ) : null}
+          {/* Summary */}
+          <Text style={styles.outfitTitle}>
+            {outfit.summary}
+          </Text>
+          
+          {/* Detailed Reasoning - Why this outfit works */}
+          {outfit.whyItWorks && outfit.whyItWorks.length > 0 && (
+            <View style={styles.reasoningSection}>
+              <View style={styles.reasoningHeader}>
+                <Ionicons name="sparkles" size={18} color={Colors.primary} />
+                <Text style={styles.reasoningTitle}>Why this works for you:</Text>
+              </View>
+              {outfit.whyItWorks.slice(0, 4).map((reason, index) => (
+                <View key={index} style={styles.reasoningItem}>
+                  <Ionicons name="checkmark-circle" size={16} color={Colors.primary} />
+                  <Text style={styles.reasoningText}>{reason}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
+        </ScrollView>
 
         {/* Animated Overlays */}
         <Animated.View
@@ -254,7 +303,8 @@ export default function StyleSwipeCard({
 const styles = StyleSheet.create({
   card: {
     width: width - 32,
-    height: height * 0.7,
+    minHeight: height * 0.75,
+    maxHeight: height * 0.85,
     backgroundColor: Colors.backgroundCard,
     borderRadius: 24,
     padding: 20,
@@ -265,72 +315,108 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 12,
+    overflow: 'hidden',
   },
   scoreBadge: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     zIndex: 10,
-  },
-  confidenceTag: {
-    position: 'absolute',
-    top: 40,
-    right: 12,
-    backgroundColor: Colors.backgroundSecondary,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  confidenceTagText: {
-    color: Colors.textSecondary,
-    fontSize: 10,
-    fontWeight: '600',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
   scoreText: {
     color: Colors.text,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
   },
   outfitPreview: {
-    flex: 1,
+    height: 180,
     marginBottom: 20,
+    marginTop: 50, // Space for score badge
   },
-  outfitItemsGrid: {
+  outfitItemsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-around',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
+    gap: 12,
   },
   outfitItemCard: {
-    width: '45%',
-    backgroundColor: Colors.backgroundCard,
-    borderRadius: 12,
-    padding: 8,
-    marginBottom: 10,
+    flex: 1,
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 16,
+    padding: 12,
     alignItems: 'center',
+    maxWidth: '32%',
+    overflow: 'hidden',
+  },
+  itemImageWrapper: {
+    position: 'relative',
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 8,
+    zIndex: 1,
   },
   outfitItemImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: Colors.backgroundSecondary,
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    backgroundColor: Colors.backgroundCard,
+    borderWidth: 2,
+    borderColor: Colors.backgroundCard,
+  },
+  itemBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.backgroundCard,
+    zIndex: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
   },
   outfitItemName: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: Colors.text,
     marginTop: 6,
     textAlign: 'center',
+    lineHeight: 14,
+    minHeight: 28,
+  },
+  itemSourceBadge: {
+    marginTop: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    alignSelf: 'center',
   },
   outfitItemSource: {
-    fontSize: 10,
-    color: Colors.primary,
-    marginTop: 2,
-    fontWeight: '500',
+    fontSize: 9,
+    color: Colors.text,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   noItemsContainer: {
     flex: 1,
@@ -343,47 +429,126 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   outfitInfo: {
-    marginBottom: 16,
+    marginBottom: 12,
+    flex: 1,
+    justifyContent: 'flex-start',
   },
-  outfitTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.text,
-    marginBottom: 8,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  confidenceText: {
-    fontSize: 14,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  styleExplanation: {
-    marginTop: 8,
-    padding: 8,
-    backgroundColor: Colors.backgroundSecondary,
-    borderRadius: 8,
-  },
-  explanationText: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    lineHeight: 16,
-  },
-  tweakButton: {
+  confidenceHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    backgroundColor: Colors.primary,
-    borderRadius: 10,
-    paddingVertical: 10,
-    marginTop: 10,
+    marginBottom: 12,
+    gap: 10,
   },
-  tweakButtonText: {
-    fontSize: 12,
+  confidenceCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 3,
+    borderColor: Colors.accent,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  confidenceNumber: {
+    fontSize: 24,
+    fontWeight: '900',
+    color: Colors.text,
+  },
+  confidenceLabel: {
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.text,
+    marginTop: 2,
+    opacity: 0.9,
+  },
+  confidenceDetails: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  occasionBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.text,
+    backgroundColor: Colors.backgroundSecondary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    textTransform: 'capitalize',
+  },
+  weatherBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.text,
+    backgroundColor: Colors.backgroundSecondary,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  confidenceExplanation: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: Colors.primary + '15',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  confidenceExplanationText: {
+    fontSize: 12,
+    color: Colors.text,
+    lineHeight: 18,
+    flex: 1,
+    fontWeight: '500',
+  },
+  outfitTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 16,
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: 4,
+  },
+  reasoningSection: {
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: Colors.primary + '30',
+  },
+  reasoningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  reasoningTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.text,
+  },
+  reasoningItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 10,
+  },
+  reasoningText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    flex: 1,
+    fontWeight: '500',
   },
   heartOverlay: {
     position: 'absolute',
@@ -422,5 +587,12 @@ const styles = StyleSheet.create({
     left: 16,
     flexDirection: 'row',
     gap: 6,
+  },
+  cardContentScroll: {
+    flex: 1,
+  },
+  cardContentScrollContainer: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
 });

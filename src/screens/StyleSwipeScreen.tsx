@@ -23,6 +23,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '../contexts/UserContext';
 import { SupabaseService } from '../services/supabaseService';
+import PinterestBoardService, { StyleInsight } from '../services/pinterestBoardService';
 
 export default function StyleSwipeScreen() {
   const { user } = useUser();
@@ -43,14 +44,44 @@ export default function StyleSwipeScreen() {
   const [undoVisible, setUndoVisible] = useState(false);
   const [lastAction, setLastAction] = useState<{ outfit: OutfitCombination; liked: boolean } | null>(null);
   const [pendingLog, setPendingLog] = useState<any | null>(null);
+  const [pinterestInsights, setPinterestInsights] = useState<StyleInsight | null>(null);
 
   useEffect(() => {
+    loadPinterestInsights();
     loadOutfits();
     // Initialize streak (simplified for demo)
     setStreak(1);
     initWeather();
     loadPersistedChips();
   }, []);
+
+  const loadPinterestInsights = async () => {
+    if (!user?.id) return;
+    
+    try {
+      // Load user's analyzed Pinterest boards (optional enhancement)
+      const analyzedBoards = await PinterestBoardService.getUserBoards(user.id);
+      
+      if (analyzedBoards.length > 0) {
+        // Use the most recent board analysis as an enhancement
+        const latestAnalysis = analyzedBoards[0];
+        setPinterestInsights(latestAnalysis.styleInsights);
+        console.log('🎨 Loaded Pinterest insights for enhanced personalization:', latestAnalysis.styleInsights);
+        
+        // Show subtle notification that Pinterest enhancement is active
+        setTimeout(() => {
+          // You could add a toast notification here if desired
+          console.log('✨ Pinterest style enhancement is now active!');
+        }, 1000);
+      } else {
+        // No Pinterest data - AI stylist works perfectly fine without it
+        console.log('💡 No Pinterest data - using standard AI stylist recommendations');
+      }
+    } catch (error) {
+      console.error('Error loading Pinterest insights (optional):', error);
+      // Don't show error to user - this is optional
+    }
+  };
 
   const loadPersistedChips = async () => {
     try {
@@ -139,12 +170,28 @@ export default function StyleSwipeScreen() {
         warm: '24°',
         hot: '30°',
       };
-      const generatedOutfits = await OracleService.generateOutfitCombinations(
-        occasion,
-        tempByWeather[weather],
-        10,
-        user?.id
-      );
+
+      let generatedOutfits: OutfitCombination[];
+
+      // Use Pinterest insights if available, otherwise use enhanced regular generation
+      if (pinterestInsights) {
+        console.log('🎨 Using Pinterest insights for enhanced outfit generation');
+        generatedOutfits = await OracleService.generateOutfitsWithPinterestInsights(
+          pinterestInsights,
+          occasion,
+          tempByWeather[weather],
+          10,
+          user?.id
+        );
+      } else {
+        console.log('🤖 Using AI stylist with smart recommendations');
+        generatedOutfits = await OracleService.generateOutfitCombinations(
+          occasion,
+          tempByWeather[weather],
+          10,
+          user?.id
+        );
+      }
 
       console.log('Generated outfits:', generatedOutfits.length);
       
@@ -177,11 +224,25 @@ export default function StyleSwipeScreen() {
         warm: '24°',
         hot: '30°',
       };
-      const more = await OracleService.generateOutfitCombinations(
-        occasion,
-        tempByWeather[weather],
-        8
-      );
+      let more: OutfitCombination[];
+      
+      // Use Pinterest insights if available, otherwise use enhanced regular generation
+      if (pinterestInsights) {
+        more = await OracleService.generateOutfitsWithPinterestInsights(
+          pinterestInsights,
+          occasion,
+          tempByWeather[weather],
+          8,
+          user?.id
+        );
+      } else {
+        more = await OracleService.generateOutfitCombinations(
+          occasion,
+          tempByWeather[weather],
+          8,
+          user?.id
+        );
+      }
       if (more && more.length) {
         setOutfits(prev => [...prev, ...more]);
       }
@@ -357,8 +418,31 @@ export default function StyleSwipeScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>AI Stylist</Text>
-          <Text style={styles.headerSubtitle}>Get personalized outfit advice</Text>
+          <View style={styles.titleRow}>
+            <Text style={styles.headerTitle}>AI Stylist</Text>
+            {pinterestInsights && (
+              <View style={styles.pinterestBadge}>
+                <Ionicons name="pinterest" size={14} color="#FFFFFF" />
+                <Text style={styles.pinterestBadgeText}>Pinterest</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.headerSubtitle}>
+            {pinterestInsights 
+              ? `Enhanced with your ${pinterestInsights.aesthetic} Pinterest style` 
+              : 'Get personalized outfit advice'
+            }
+          </Text>
+          {!pinterestInsights && (
+            <TouchableOpacity 
+              style={styles.enhancementPrompt}
+              onPress={() => (global as any)?.navigation?.navigate?.('PinterestStyle', {})}
+            >
+              <Ionicons name="pinterest" size={12} color="#E60023" />
+              <Text style={styles.enhancementText}>Enhance with Pinterest</Text>
+              <Ionicons name="chevron-forward" size={12} color="#E60023" />
+            </TouchableOpacity>
+          )}
         </View>
         <TouchableOpacity onPress={() => (global as any)?.navigation?.navigate?.('StyleCheck', {})} style={styles.chatCta}>
           <Ionicons name="chatbubble-ellipses" size={18} color={Colors.text} />
@@ -658,6 +742,46 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
+    color: Colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pinterestBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E60023',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  pinterestBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  enhancementPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginTop: 4,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#FFE5E5',
+  },
+  enhancementText: {
+    color: '#E60023',
+    fontSize: 11,
+    fontWeight: '500',
+  },
   chipsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -787,9 +911,5 @@ const styles = StyleSheet.create({
     color: Colors.text,
     fontSize: 12,
     fontWeight: '700',
-  },
-    color: Colors.text,
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

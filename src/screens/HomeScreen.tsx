@@ -110,6 +110,25 @@ export default function HomeScreen() {
               <Ionicons name="chevron-forward" size={24} color={Colors.textSecondary} />
             </View>
           </TouchableOpacity>
+
+          {/* Feature 4: Pinterest Style Analysis */}
+          <TouchableOpacity
+            style={styles.mainActionButton}
+            onPress={() => navigation.navigate('PinterestStyle', {})}
+          >
+            <View style={styles.actionContent}>
+              <View style={styles.actionIconContainer}>
+                <Ionicons name="pinterest" size={28} color={Colors.primary} />
+              </View>
+              <View style={styles.actionTextContainer}>
+              <Text style={styles.actionTitle}>Enhance with Pinterest</Text>
+              <Text style={styles.actionSubtitle}>
+                Optional: Get even more personalized recommendations
+              </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color={Colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
         </View>
 
 

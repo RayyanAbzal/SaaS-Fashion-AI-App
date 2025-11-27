@@ -4,6 +4,7 @@ import * as WardrobeService from './wardrobeService';
 import { OutfitGenerator } from './outfitGenerator';
 import SmartOutfitGenerator from './smartOutfitGenerator';
 import CountryRoadService from './countryRoadService';
+import PinterestBoardService, { StyleInsight } from './pinterestBoardService';
 
 export interface OutfitItem {
   id: string;
@@ -671,5 +672,324 @@ export class OracleService {
     ];
     
     return allCombinations.find(outfit => outfit.id === id) || null;
+  }
+
+  /**
+   * Generate outfit combinations using Pinterest style insights
+   */
+  static async generateOutfitsWithPinterestInsights(
+    styleInsights: StyleInsight,
+    occasion: string = 'casual',
+    weather: string = '22°',
+    count: number = 5,
+    userId?: string
+  ): Promise<OutfitCombination[]> {
+    console.log('🎨 Generating outfits with Pinterest style insights:', styleInsights);
+
+    try {
+      const wardrobeItems = await this.getRealWardrobeItems(userId);
+      const combinations: OutfitCombination[] = [];
+
+      // Filter wardrobe items based on Pinterest insights
+      const filteredItems = this.filterItemsByStyleInsights(wardrobeItems, styleInsights);
+
+      // Generate combinations that match the Pinterest aesthetic
+      for (let i = 0; i < count; i++) {
+        const combination = this.createPinterestInspiredOutfit(
+          filteredItems,
+          styleInsights,
+          occasion,
+          weather,
+          i
+        );
+        combinations.push(combination);
+      }
+
+      console.log(`✅ Generated ${combinations.length} Pinterest-inspired outfits`);
+      return combinations;
+
+    } catch (error) {
+      console.error('❌ Error generating Pinterest-inspired outfits:', error);
+      // Fallback to regular outfit generation
+      return this.generateOutfitCombinations(occasion, weather, count, userId);
+    }
+  }
+
+  /**
+   * Filter wardrobe items based on Pinterest style insights
+   */
+  private static filterItemsByStyleInsights(
+    items: OutfitItem[],
+    insights: StyleInsight
+  ): OutfitItem[] {
+    return items.filter(item => {
+      // Check if item matches color palette
+      const colorMatch = insights.colorPalette.some(color => 
+        item.color.toLowerCase().includes(color.toLowerCase()) ||
+        color.toLowerCase().includes(item.color.toLowerCase())
+      );
+
+      // Check if item matches clothing types
+      const typeMatch = insights.clothingTypes.some(type =>
+        item.category.toLowerCase().includes(type.toLowerCase()) ||
+        type.toLowerCase().includes(item.category.toLowerCase())
+      );
+
+      // Check if item matches patterns
+      const patternMatch = insights.patterns.some(pattern =>
+        item.name.toLowerCase().includes(pattern.toLowerCase()) ||
+        item.tags?.some(tag => tag.toLowerCase().includes(pattern.toLowerCase()))
+      );
+
+      // Check if item matches materials
+      const materialMatch = insights.materials.some(material =>
+        item.name.toLowerCase().includes(material.toLowerCase()) ||
+        item.tags?.some(tag => tag.toLowerCase().includes(material.toLowerCase()))
+      );
+
+      // Check if item matches brand preferences
+      const brandMatch = !item.brand || insights.brands.some(brand =>
+        item.brand.toLowerCase().includes(brand.toLowerCase()) ||
+        brand.toLowerCase().includes(item.brand.toLowerCase())
+      );
+
+      // Return true if at least 2 criteria match
+      const matchCount = [colorMatch, typeMatch, patternMatch, materialMatch, brandMatch]
+        .filter(Boolean).length;
+      
+      return matchCount >= 2;
+    });
+  }
+
+  /**
+   * Create a Pinterest-inspired outfit combination
+   */
+  private static createPinterestInspiredOutfit(
+    items: OutfitItem[],
+    insights: StyleInsight,
+    occasion: string,
+    weather: string,
+    index: number
+  ): OutfitCombination {
+    // Select items that best match the Pinterest aesthetic
+    const topItems = items.filter(item => 
+      ['top', 'shirt', 'blouse', 'sweater', 'jacket'].includes(item.category.toLowerCase())
+    );
+    const bottomItems = items.filter(item => 
+      ['bottom', 'pants', 'jeans', 'skirt', 'shorts'].includes(item.category.toLowerCase())
+    );
+    const shoeItems = items.filter(item => 
+      ['shoes', 'boots', 'sneakers', 'heels'].includes(item.category.toLowerCase())
+    );
+
+    // Select items based on Pinterest insights
+    const selectedItems = [
+      this.selectBestMatchingItem(topItems, insights),
+      this.selectBestMatchingItem(bottomItems, insights),
+      this.selectBestMatchingItem(shoeItems, insights)
+    ].filter(Boolean) as OutfitItem[];
+
+    // Generate outfit description based on Pinterest aesthetic
+    const aesthetic = insights.aesthetic;
+    const primaryColor = insights.colorPalette[0] || 'neutral';
+    const style = insights.clothingTypes[0] || 'casual';
+
+    const summary = this.generatePinterestInspiredSummary(
+      aesthetic,
+      primaryColor,
+      style,
+      occasion
+    );
+
+    const confidence = Math.min(insights.confidence * 100, 95);
+
+    return {
+      id: `pinterest_${Date.now()}_${index}`,
+      items: selectedItems,
+      summary,
+      confidence,
+      occasion,
+      weather,
+      colorHarmony: this.generateColorHarmonyDescription(insights.colorPalette),
+      styleNotes: this.generatePinterestStyleNotes(insights, occasion),
+      fitAdvice: this.generatePinterestFitAdvice(aesthetic),
+      whyItWorks: this.generatePinterestWhyItWorks(insights, occasion),
+      personalStyleMatch: confidence,
+      trendRelevance: Math.floor(Math.random() * 20) + 70, // 70-90%
+      bodyFlattery: this.generateBodyFlatteryDescription(aesthetic),
+      mixRatio: {
+        personalItems: selectedItems.filter(item => item.isFromWardrobe).length,
+        onlineItems: selectedItems.filter(item => !item.isFromWardrobe).length
+      }
+    };
+  }
+
+  /**
+   * Select the best matching item based on Pinterest insights
+   */
+  private static selectBestMatchingItem(
+    items: OutfitItem[],
+    insights: StyleInsight
+  ): OutfitItem | null {
+    if (items.length === 0) return null;
+
+    // Score each item based on how well it matches Pinterest insights
+    const scoredItems = items.map(item => {
+      let score = 0;
+
+      // Color match
+      if (insights.colorPalette.some(color => 
+        item.color.toLowerCase().includes(color.toLowerCase())
+      )) {
+        score += 3;
+      }
+
+      // Type match
+      if (insights.clothingTypes.some(type =>
+        item.category.toLowerCase().includes(type.toLowerCase())
+      )) {
+        score += 2;
+      }
+
+      // Pattern match
+      if (insights.patterns.some(pattern =>
+        item.name.toLowerCase().includes(pattern.toLowerCase())
+      )) {
+        score += 2;
+      }
+
+      // Material match
+      if (insights.materials.some(material =>
+        item.name.toLowerCase().includes(material.toLowerCase())
+      )) {
+        score += 1;
+      }
+
+      // Brand match
+      if (item.brand && insights.brands.some(brand =>
+        item.brand.toLowerCase().includes(brand.toLowerCase())
+      )) {
+        score += 1;
+      }
+
+      return { item, score };
+    });
+
+    // Sort by score and return the best match
+    scoredItems.sort((a, b) => b.score - a.score);
+    return scoredItems[0].item;
+  }
+
+  /**
+   * Generate Pinterest-inspired outfit summary
+   */
+  private static generatePinterestInspiredSummary(
+    aesthetic: string,
+    primaryColor: string,
+    style: string,
+    occasion: string
+  ): string {
+    const summaries = {
+      minimalist: `A clean, ${primaryColor} ${style} look that embodies minimalist elegance. Perfect for ${occasion}, this outfit focuses on quality pieces and simple lines that create effortless sophistication.`,
+      bohemian: `A free-spirited ${primaryColor} ensemble that captures bohemian charm. Ideal for ${occasion}, this outfit combines flowing fabrics and natural textures for a relaxed yet stylish vibe.`,
+      vintage: `A timeless ${primaryColor} ${style} that channels vintage glamour. Perfect for ${occasion}, this outfit celebrates classic silhouettes and retro details that never go out of style.`,
+      modern: `A sleek, ${primaryColor} ${style} that defines modern sophistication. Great for ${occasion}, this outfit features contemporary cuts and clean lines for a polished, up-to-date look.`,
+      chic: `An effortlessly ${primaryColor} ${style} that exudes chic sophistication. Perfect for ${occasion}, this outfit balances elegance with comfort for a refined, put-together appearance.`,
+      edgy: `A bold, ${primaryColor} ${style} that embraces edgy attitude. Ideal for ${occasion}, this outfit combines statement pieces with confident styling for a look that commands attention.`
+    };
+
+    return summaries[aesthetic as keyof typeof summaries] || 
+           `A stylish ${primaryColor} ${style} perfect for ${occasion}. This outfit reflects your personal aesthetic and creates a confident, put-together look.`;
+  }
+
+  /**
+   * Generate color harmony description based on Pinterest insights
+   */
+  private static generateColorHarmonyDescription(colorPalette: string[]): string {
+    if (colorPalette.length === 0) return 'Neutral and versatile color combination';
+
+    const primaryColor = colorPalette[0];
+    const secondaryColors = colorPalette.slice(1);
+
+    if (secondaryColors.length === 0) {
+      return `A monochromatic ${primaryColor} palette that creates depth through texture and layering`;
+    }
+
+    return `A harmonious blend of ${primaryColor} with ${secondaryColors.join(', ')} that creates visual interest while maintaining cohesion`;
+  }
+
+  /**
+   * Generate Pinterest-inspired style notes
+   */
+  private static generatePinterestStyleNotes(
+    insights: StyleInsight,
+    occasion: string
+  ): string[] {
+    const notes = [
+      `Inspired by your ${insights.aesthetic} aesthetic`,
+      `Features your preferred ${insights.colorPalette[0]} color palette`,
+      `Perfect for ${occasion} occasions`,
+      `Incorporates ${insights.materials[0] || 'quality'} materials`
+    ];
+
+    if (insights.patterns.length > 0) {
+      notes.push(`Includes ${insights.patterns[0]} pattern details`);
+    }
+
+    if (insights.brands.length > 0) {
+      notes.push(`Matches your preferred ${insights.brands[0]} style`);
+    }
+
+    return notes.slice(0, 4); // Limit to 4 notes
+  }
+
+  /**
+   * Generate Pinterest-inspired fit advice
+   */
+  private static generatePinterestFitAdvice(aesthetic: string): string {
+    const advice = {
+      minimalist: 'Choose pieces that fit well and have clean lines. Avoid anything too tight or too loose - aim for a tailored, streamlined silhouette.',
+      bohemian: 'Look for flowing, relaxed fits that move with your body. Embrace slightly oversized pieces and natural draping.',
+      vintage: 'Focus on classic silhouettes that flatter your figure. Pay attention to waist definition and proportion.',
+      modern: 'Opt for contemporary cuts that are neither too tight nor too loose. Look for pieces with interesting details or architectural elements.',
+      chic: 'Choose well-fitted pieces that create a polished silhouette. Focus on quality fabrics and construction.',
+      edgy: 'Don\'t be afraid of bold fits and statement pieces. Look for items that make you feel confident and powerful.'
+    };
+
+    return advice[aesthetic as keyof typeof advice] || 
+           'Choose pieces that fit well and make you feel confident and comfortable.';
+  }
+
+  /**
+   * Generate Pinterest-inspired "why it works" explanations
+   */
+  private static generatePinterestWhyItWorks(
+    insights: StyleInsight,
+    occasion: string
+  ): string[] {
+    return [
+      `Reflects your ${insights.aesthetic} style preferences`,
+      `Uses your favorite ${insights.colorPalette[0]} color palette`,
+      `Perfect for ${occasion} occasions`,
+      `Incorporates quality ${insights.materials[0] || 'materials'}`,
+      `Matches your personal style profile from Pinterest analysis`
+    ];
+  }
+
+  /**
+   * Generate body flattery description based on aesthetic
+   */
+  private static generateBodyFlatteryDescription(aesthetic: string): string {
+    const descriptions = {
+      minimalist: 'Clean lines and tailored fits create a streamlined silhouette that flatters all body types',
+      bohemian: 'Flowing fabrics and relaxed fits create movement and comfort while maintaining style',
+      vintage: 'Classic silhouettes and defined waists create a timeless, flattering shape',
+      modern: 'Contemporary cuts and architectural details create a sophisticated, confident look',
+      chic: 'Well-fitted pieces and quality construction create a polished, put-together appearance',
+      edgy: 'Bold cuts and statement pieces create a confident, powerful silhouette'
+    };
+
+    return descriptions[aesthetic as keyof typeof descriptions] || 
+           'This outfit is designed to flatter your figure and make you feel confident and stylish.';
   }
 }

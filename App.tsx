@@ -19,6 +19,7 @@ import ProfileScreen from './src/screens/ProfileScreen';
 import BrandSelectionScreen from './src/screens/BrandSelectionScreen';
 import AchievementsScreen from './src/screens/AchievementsScreen';
 import PinterestBoardScreen from './src/screens/PinterestBoardScreen';
+import PinterestStyleScreen from './src/screens/PinterestStyleScreen';
 import StyleCheckScreen from './src/screens/StyleCheckScreen';
 import AvatarSetupScreen from './src/screens/AvatarSetupScreen';
 import AvatarViewScreen from './src/screens/AvatarViewScreen';
@@ -184,6 +185,22 @@ function AppNavigator() {
             options={{
               headerShown: true,
               title: 'Pinterest Board',
+              headerStyle: {
+                backgroundColor: Colors.background,
+              },
+              headerTintColor: Colors.primary,
+              headerTitleStyle: {
+                color: Colors.text,
+                fontWeight: '600',
+              },
+            }}
+          />
+          <Stack.Screen
+            name="PinterestStyle"
+            component={PinterestStyleScreen}
+            options={{
+              headerShown: true,
+              title: 'Pinterest Style Analysis',
               headerStyle: {
                 backgroundColor: Colors.background,
               },
