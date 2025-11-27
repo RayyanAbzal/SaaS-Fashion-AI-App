@@ -26,12 +26,14 @@ export interface CountryRoadItem {
 }
 
 class CountryRoadService {
-  // Try to use environment variable or localhost for development
-  // In production, this should be your Vercel deployment URL
+  // Use the first Vercel project (saa-s-fashion-ai-app) as primary
+  // You can change this to any of your Vercel projects:
+  // - saa-s-fashion-ai-app.vercel.app
+  // - saa-s-fashion-ai-app2.vercel.app  
+  // - saa-s-fashion-ai-app3.vercel.app
   private static baseUrl = process.env.EXPO_PUBLIC_API_URL 
     || process.env.API_URL 
-    || 'https://saa-s-fashion-ai-app3.vercel.app/api'
-    || 'http://localhost:3000/api'; // Fallback to localhost for development
+    || 'https://saa-s-fashion-ai-app.vercel.app/api';
   private static cachedItems: CountryRoadItem[] = [];
   private static lastFetch: number = 0;
   private static cacheExpiry = 30 * 60 * 1000; // 30 minutes
@@ -45,9 +47,9 @@ class CountryRoadService {
         return this.cachedItems;
       }
 
-      console.log(`🛍️ Fetching Country Road items from API: ${this.baseUrl}...`);
+      console.log(`🛍️ Fetching retail items from API: ${this.baseUrl}...`);
       
-      // Try the country-road-items endpoint first
+      // Try retail-products endpoint first (it has more items and is more reliable)
       let response: Response;
       let data: any;
       
@@ -56,7 +58,8 @@ class CountryRoadService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
         
-        const url = `${this.baseUrl}/country-road-items`;
+        // Try retail-products endpoint first (has more items)
+        const url = `${this.baseUrl}/retail-products`;
         console.log(`📡 Attempting to fetch from: ${url}`);
         
         response = await fetch(url, {
@@ -72,32 +75,44 @@ class CountryRoadService {
         
         if (!response.ok) {
           if (response.status === 404) {
-            console.warn(`⚠️ Endpoint not found (404): ${url} - endpoint may not be deployed`);
-            throw new Error(`Endpoint not found: ${response.status}`);
+            console.warn(`⚠️ Retail products endpoint not found (404): ${url}`);
+            throw new Error(`Retail products endpoint not found: ${response.status}`);
           }
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         data = await response.json();
         
-        if (data.success && data.items && data.items.length > 0) {
-          this.cachedItems = data.items;
+        if (data.success && data.products && data.products.length > 0) {
+          // Convert retail products to Country Road items format
+          // Filter for Country Road brand or use all if no brand filter
+          const countryRoadProducts = data.products
+            .filter((p: any) => {
+              const brand = (p.brand || '').toLowerCase();
+              return brand.includes('country road') || brand.includes('countryroad') || !p.brand;
+            })
+            .slice(0, 50); // Limit to 50 items
+          
+          this.cachedItems = countryRoadProducts.map((p: any) => this.convertRetailProductToCountryRoadItem(p));
           this.lastFetch = Date.now();
-          console.log(`✅ Successfully fetched ${this.cachedItems.length} Country Road items from API`);
+          console.log(`✅ Successfully fetched ${this.cachedItems.length} items from retail-products API`);
           return this.cachedItems;
         } else {
-          console.warn('⚠️ API returned empty items array, trying retail-products endpoint...');
-          throw new Error('Empty items array from country-road-items');
+          console.warn('⚠️ Retail products API returned empty, trying country-road-items endpoint...');
+          throw new Error('Empty products array from retail-products');
         }
       } catch (firstError) {
-        console.log('⚠️ country-road-items endpoint failed, trying retail-products endpoint...');
+        console.log('⚠️ retail-products endpoint failed, trying country-road-items endpoint...');
         
-        // Fallback to retail-products endpoint
+        // Fallback to country-road-items endpoint
         try {
           const controller2 = new AbortController();
           const timeoutId2 = setTimeout(() => controller2.abort(), 10000);
           
-          response = await fetch(`${this.baseUrl}/retail-products`, {
+          const url2 = `${this.baseUrl}/country-road-items`;
+          console.log(`📡 Attempting to fetch from: ${url2}`);
+          
+          response = await fetch(url2, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',
@@ -110,22 +125,18 @@ class CountryRoadService {
           
           if (!response.ok) {
             if (response.status === 404) {
-              console.warn(`⚠️ Retail products endpoint also not found (404) - using fallback items`);
-              throw new Error(`Retail products endpoint not found: ${response.status}`);
+              console.warn(`⚠️ Country Road endpoint also not found (404): ${url2}`);
+              throw new Error(`Country Road endpoint not found: ${response.status}`);
             }
             throw new Error(`HTTP error! status: ${response.status}`);
           }
 
           data = await response.json();
           
-          if (data.success && data.products && data.products.length > 0) {
-            // Convert retail products to Country Road items format
-            this.cachedItems = data.products
-              .filter((p: any) => p.brand?.toLowerCase().includes('country road') || !p.brand)
-              .slice(0, 50) // Limit to 50 items
-              .map((p: any) => this.convertRetailProductToCountryRoadItem(p));
+          if (data.success && data.items && data.items.length > 0) {
+            this.cachedItems = data.items;
             this.lastFetch = Date.now();
-            console.log(`✅ Successfully fetched ${this.cachedItems.length} items from retail-products API`);
+            console.log(`✅ Successfully fetched ${this.cachedItems.length} Country Road items from API`);
             return this.cachedItems;
           }
         } catch (secondError) {
