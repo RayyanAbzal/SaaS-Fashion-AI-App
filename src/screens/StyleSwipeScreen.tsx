@@ -428,13 +428,6 @@ export default function StyleSwipeScreen() {
     if (loadingMore) return;
     try {
       setLoadingMore(true);
-      const tempByWeather: Record<typeof weather, string> = {
-        cold: '10°',
-        mild: '18°',
-        warm: '24°',
-        hot: '30°',
-      };
-      let more: OutfitCombination[];
       
       // Calculate actual temperature for loading more outfits
       const tempByWeather: Record<typeof weather, string> = {
@@ -446,6 +439,8 @@ export default function StyleSwipeScreen() {
       const actualTemp = autoWeather?.tempC 
         ? `${autoWeather.tempC}°` 
         : tempByWeather[weather];
+      
+      let more: OutfitCombination[];
       
       // Use Pinterest insights if available, otherwise use enhanced regular generation
       if (pinterestInsights) {
