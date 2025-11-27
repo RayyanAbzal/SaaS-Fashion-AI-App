@@ -7,9 +7,10 @@ export interface WeatherData {
 }
 
 export class WeatherService {
-  // Simple weather service that works without external APIs for now
-  // We can add real weather integration later
-  
+  /**
+   * Get current location with high accuracy for weather data
+   * Uses high accuracy mode to ensure precise weather data
+   */
   static async getCurrentLocation(): Promise<Location.LocationObject> {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -17,15 +18,18 @@ export class WeatherService {
         throw new Error('Location permission not granted');
       }
 
+      // Use high accuracy for better weather precision
       const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-        timeInterval: 300000, // 5 minutes
-        distanceInterval: 1000 // 1km
+        accuracy: Location.Accuracy.High, // Changed from Balanced to High for better accuracy
+        maximumAge: 60000, // Accept location up to 1 minute old
+        timeout: 10000, // 10 second timeout
       });
+      
+      console.log(`📍 Location obtained: ${location.coords.latitude}, ${location.coords.longitude} (accuracy: ${location.coords.accuracy}m)`);
       return location;
     } catch (error) {
       console.warn('Location service unavailable:', error);
-      // Return mock location for demo purposes
+      // Return mock location for demo purposes (NYC)
       return {
         coords: {
           latitude: 40.7128,
@@ -41,31 +45,190 @@ export class WeatherService {
     }
   }
 
-  static async getCurrentWeather(lat?: number, lon?: number): Promise<WeatherData> {
+  /**
+   * Get real-time weather data with automatic location detection
+   * This is the recommended method for getting current weather
+   */
+  static async getRealTimeWeather(forceRefresh: boolean = true): Promise<WeatherData> {
     try {
-      // For now, return mock weather data
-      // This ensures the app works while we integrate real weather later
-      const mockWeather: WeatherData = {
-        temperature: 22, // 22°C - comfortable spring weather
+      const location = await this.getCurrentLocation();
+      return await this.getCurrentWeather(
+        location.coords.latitude,
+        location.coords.longitude,
+        forceRefresh
+      );
+    } catch (error) {
+      console.error('Error getting real-time weather:', error);
+      // Return fallback weather
+      return {
+        temperature: 22,
         condition: 'Partly Cloudy',
         icon: 'partly-sunny'
       };
+    }
+  }
 
-      // TODO: Integrate with real weather API when ready
-      // const apiKey = 'YOUR_WEATHER_API_KEY';
-      // const response = await fetch(`https://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${lat},${lon}`);
-      // const data = await response.json();
-      
-      return mockWeather;
-    } catch (error) {
-      console.warn('Weather service unavailable, using fallback:', error);
-      // Fallback weather data
+  /**
+   * Get current weather data from OpenWeatherMap API
+   * Uses real-time API calls with proper error handling
+   * 
+   * @param lat - Latitude (optional, will use location if not provided)
+   * @param lon - Longitude (optional, will use location if not provided)
+   * @param forceRefresh - Force fresh API call, bypassing cache
+   * @returns WeatherData with temperature, condition, and icon
+   */
+  static async getCurrentWeather(lat?: number, lon?: number, forceRefresh: boolean = false): Promise<WeatherData> {
+    // If no coordinates provided, get location first
+    if (!lat || !lon) {
+      try {
+        const location = await this.getCurrentLocation();
+        lat = location.coords.latitude;
+        lon = location.coords.longitude;
+      } catch (error) {
+        console.warn('Could not get location, using fallback weather');
+        return {
+          temperature: 22,
+          condition: 'Partly Cloudy',
+          icon: 'partly-sunny'
+        };
+      }
+    }
+
+    // Check cache first (weather doesn't change frequently) - but only if not forcing refresh
+    if (!forceRefresh) {
+      try {
+        const { cache, cacheKeys } = await import('./mobileCache');
+        const cacheKey = cacheKeys.weatherData(lat!, lon!);
+        const cached = await cache.get(cacheKey);
+        
+        if (cached) {
+          // Return cached data but log it for debugging
+          console.log(`🌤️ Using cached weather: ${cached.temperature}°C (cache expires in 5 min)`);
+          return cached;
+        }
+      } catch (error) {
+        console.warn('Cache check failed, continuing:', error);
+      }
+    }
+
+    // Get API key
+    const apiKey = process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY || process.env.OPENWEATHER_API_KEY;
+    
+    if (!apiKey) {
+      console.warn('⚠️ OpenWeatherMap API key not found. Please set EXPO_PUBLIC_OPENWEATHER_API_KEY in your .env file');
       return {
-        temperature: 20,
-        condition: 'Mild',
+        temperature: 22,
+        condition: 'Partly Cloudy',
         icon: 'partly-sunny'
       };
     }
+
+    // Use circuit breaker for weather API with retry logic
+    try {
+      const { withCircuitBreaker } = await import('./circuitBreaker');
+      
+      return await withCircuitBreaker(
+        'weather',
+        async () => {
+          console.log(`🌤️ Fetching REAL-TIME weather from OpenWeatherMap API for lat: ${lat}, lon: ${lon}`);
+          
+          // Add timestamp to prevent any caching
+          const timestamp = Date.now();
+          const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}&_t=${timestamp}`;
+          
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+            },
+            // Ensure no caching
+            cache: 'no-store',
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Weather API error: ${response.status} ${response.statusText} - ${errorText}`);
+          }
+          
+          const data = await response.json();
+          
+          // Validate response data
+          if (!data.main || typeof data.main.temp !== 'number') {
+            throw new Error('Invalid weather data received from API');
+          }
+          
+          const weatherData: WeatherData = {
+            temperature: Math.round(data.main.temp),
+            condition: data.weather?.[0]?.main || 'Clear',
+            icon: data.weather?.[0]?.icon || '01d'
+          };
+          
+          console.log(`✅ REAL-TIME weather data received: ${weatherData.temperature}°C, ${weatherData.condition} (from OpenWeatherMap API)`);
+          
+          // Cache for 5 minutes (300 seconds) - reduced from 10 minutes for more accuracy
+          try {
+            const { cache, cacheKeys } = await import('./mobileCache');
+            await cache.set(cacheKeys.weatherData(lat!, lon!), weatherData, 300);
+          } catch (error) {
+            console.warn('Cache set failed (non-critical):', error);
+          }
+          
+          return weatherData;
+        },
+        async () => {
+          // Fallback to mock weather if circuit breaker is open
+          console.warn('⚠️ Weather API circuit breaker is open, using fallback temperature');
+          return {
+            temperature: 22,
+            condition: 'Partly Cloudy',
+            icon: 'partly-sunny'
+          };
+        },
+        {
+          failureThreshold: 5,
+          timeout: 10000, // 10 second timeout for better reliability
+          resetTimeout: 60000,
+        }
+      );
+    } catch (error) {
+      console.error('Error fetching weather data:', error);
+      // Try direct API call if circuit breaker fails
+      try {
+        const timestamp = Date.now();
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}&_t=${timestamp}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Cache-Control': 'no-cache',
+          },
+          cache: 'no-store',
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const weatherData: WeatherData = {
+            temperature: Math.round(data.main.temp),
+            condition: data.weather?.[0]?.main || 'Clear',
+            icon: data.weather?.[0]?.icon || '01d'
+          };
+          console.log(`✅ Direct API call successful: ${weatherData.temperature}°C`);
+          return weatherData;
+        }
+      } catch (directError) {
+        console.error('Direct API call also failed:', directError);
+      }
+    }
+    
+    // Final fallback to mock weather data
+    console.warn('⚠️ Weather API not available, using fallback temperature (22°C)');
+    return {
+      temperature: 22,
+      condition: 'Partly Cloudy',
+      icon: 'partly-sunny'
+    };
   }
 
   // Get weather without location (for demo/testing)
