@@ -1,4 +1,0 @@
-// Allow public read/write access to shopping_products (for development)
-match /shopping_products/{docId} {
-  allow read, write: if true;
-} 

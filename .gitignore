@@ -164,4 +164,4 @@ public
 
 # Temporary folders
 tmp/
-temp/
+temp/.env

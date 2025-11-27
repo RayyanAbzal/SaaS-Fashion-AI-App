@@ -32,7 +32,11 @@ type WardrobeScreenRouteParams = {
   capturedImageUri?: string;
 };
 
-type WardrobeScreenProps = BottomTabScreenProps<MainTabParamList, 'Wardrobe'> | any;
+type WardrobeScreenProps = BottomTabScreenProps<MainTabParamList, 'Wardrobe'> & {
+  route?: {
+    params?: WardrobeScreenRouteParams;
+  };
+};
 
 const CATEGORIES = [
   { key: 'all', label: 'All', icon: 'shirt-outline' },
@@ -87,20 +91,45 @@ export default function WardrobeScreen({ navigation, route }: WardrobeScreenProp
       setLoading(true);
       
       // Real-time updates will be implemented with Supabase subscriptions
+      let timeoutId: NodeJS.Timeout | null = null;
+      
       const loadWardrobeItems = async () => {
         try {
           if (!user?.id) return;
-          const items = await WardrobeService.getUserWardrobe(user.id);
+          
+          // Add timeout to prevent hanging
+          const wardrobePromise = WardrobeService.getUserWardrobe(user.id);
+          timeoutId = setTimeout(() => {
+            throw new Error('Wardrobe load timeout');
+          }, 10000);
+          
+          const items = await wardrobePromise;
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          
           setItems(items);
           setFilteredItems(items);
           setLoading(false);
         } catch (error) {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
           console.error('Error loading wardrobe:', error);
+          // Set empty array on error so UI can still render
+          setItems([]);
+          setFilteredItems([]);
           setLoading(false);
         }
       };
       loadWardrobeItems();
-      return () => {}; // Placeholder unsubscribe
+      return () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+      };
       
       /* const unsubscribe = FirestoreService.onWardrobeUpdate(
           user.id,
@@ -591,7 +620,13 @@ export default function WardrobeScreen({ navigation, route }: WardrobeScreenProp
             onChangeText={setSearchQuery}
             placeholderTextColor={Colors.textSecondary}
           />
-          <TouchableOpacity style={styles.clearSearchButton} onPress={() => setSearchQuery('')}>
+          <TouchableOpacity 
+            style={styles.clearSearchButton} 
+            onPress={() => {
+              setSearchQuery('');
+              setShowSearch(false);
+            }}
+          >
             <Ionicons name="close" size={18} color={Colors.textSecondary} />
           </TouchableOpacity>
         </View>

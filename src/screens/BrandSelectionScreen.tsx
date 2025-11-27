@@ -12,14 +12,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
-import { Brand, BrandCategory } from '../types';
+import { Brand, BrandCategory, RootStackParamList } from '../types';
 import { AuthService } from '../services/authService';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-interface BrandSelectionScreenProps {
-  navigation: any;
-}
+type BrandSelectionScreenProps = NativeStackScreenProps<RootStackParamList, 'BrandSelection'>;
 
-export default function BrandSelectionScreen({ navigation }: BrandSelectionScreenProps) {
+export default function BrandSelectionScreen({ navigation, route }: BrandSelectionScreenProps) {
   const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 

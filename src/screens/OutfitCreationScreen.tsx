@@ -17,20 +17,15 @@ import {
   Occasion, 
   OutfitCreationRequest, 
   OccasionConfig,
-  OutfitGenerationResult 
+  OutfitGenerationResult,
+  RootStackParamList
 } from '../types';
 import OutfitCreationService from '../services/outfitCreationService';
 import { WeatherService } from '../services/weatherService';
 import * as Location from 'expo-location';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-interface OutfitCreationScreenProps {
-  navigation: any;
-  route: {
-    params?: {
-      selectedItems?: WardrobeItem[];
-    };
-  };
-}
+type OutfitCreationScreenProps = NativeStackScreenProps<RootStackParamList, 'OutfitCreation'>;
 
 export default function OutfitCreationScreen({ navigation, route }: OutfitCreationScreenProps) {
   const [selectedOccasion, setSelectedOccasion] = useState<Occasion | null>(null);

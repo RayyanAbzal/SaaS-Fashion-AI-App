@@ -1,11 +1,17 @@
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { AppError } from '../utils/errorHandler';
 
-let ratelimit: Ratelimit | null = null;
+// Rate limiting middleware - gracefully handles missing Redis
+let Ratelimit: any = null;
+let Redis: any = null;
+let ratelimit: any = null;
 
 try {
+  const upstashRatelimit = require('@upstash/ratelimit');
+  const upstashRedis = require('@upstash/redis');
+  Ratelimit = upstashRatelimit.Ratelimit;
+  Redis = upstashRedis.Redis;
+  
   const redis = Redis.fromEnv();
   ratelimit = new Ratelimit({
     redis,
@@ -56,6 +62,7 @@ export const rateLimitMiddleware = async (
 
 // Different rate limits for different endpoints
 export const createRateLimiter = (requests: number, window: string) => {
+  if (!Ratelimit || !Redis) return null;
   try {
     const redis = Redis.fromEnv();
     return new Ratelimit({

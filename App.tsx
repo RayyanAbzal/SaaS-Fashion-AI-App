@@ -1,5 +1,42 @@
 // App entry point
 
+// Suppress Supabase network errors BEFORE any imports
+import { LogBox } from 'react-native';
+
+// Suppress network errors immediately - use regex patterns for better matching
+LogBox.ignoreLogs([
+  /Network request failed/i,
+  /AuthRetryableFetchError/i,
+  /Failed to fetch/i,
+  /TypeError.*Network request failed/i,
+  /Network.*failed/i,
+]);
+
+// Suppress network errors in console.error (must be before any Supabase imports)
+if (typeof console !== 'undefined' && console.error) {
+  const originalError = console.error;
+  console.error = (...args: any[]) => {
+    const allArgsString = args.map(arg => {
+      if (typeof arg === 'object' && arg !== null) {
+        try {
+          return JSON.stringify(arg);
+        } catch {
+          return String(arg);
+        }
+      }
+      return String(arg);
+    }).join(' ');
+    
+    // Suppress ALL "Network request failed" errors (they're from Supabase retries)
+    if (allArgsString.includes('Network request failed')) {
+      return; // Silently ignore
+    }
+    
+    // Log all other errors normally
+    originalError.apply(console, args);
+  };
+}
+
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -31,6 +68,7 @@ import { AuthService } from './src/services/authService';
 import { UserProvider, useUser } from './src/contexts/UserContext';
 import { AvatarProvider } from './src/contexts/AvatarContext';
 import { Colors } from './src/constants/colors';
+import DatabaseHealthService from './src/services/databaseHealthService';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -173,7 +211,8 @@ function AppNavigator() {
             component={AchievementsScreen}
             options={{
               title: 'Achievements',
-              headerTintColor: Colors.text,
+              headerTintColor: Colors.primary,
+              headerBackTitleVisible: false,
               headerStyle: {
                 backgroundColor: Colors.background,
               },
@@ -185,6 +224,7 @@ function AppNavigator() {
             options={{
               headerShown: true,
               title: 'Pinterest Board',
+              headerBackTitleVisible: false,
               headerStyle: {
                 backgroundColor: Colors.background,
               },
@@ -201,6 +241,7 @@ function AppNavigator() {
             options={{
               headerShown: true,
               title: 'Pinterest Style Analysis',
+              headerBackTitleVisible: false,
               headerStyle: {
                 backgroundColor: Colors.background,
               },
@@ -217,6 +258,7 @@ function AppNavigator() {
             options={{
               headerShown: true,
               title: 'Create Your Avatar',
+              headerBackTitleVisible: false,
               headerStyle: {
                 backgroundColor: Colors.background,
               },
@@ -233,6 +275,7 @@ function AppNavigator() {
             options={{
               headerShown: true,
               title: 'My Avatar',
+              headerBackTitleVisible: false,
               headerStyle: {
                 backgroundColor: Colors.background,
               },
@@ -249,6 +292,7 @@ function AppNavigator() {
             options={{
               headerShown: true,
               title: 'Shop',
+              headerBackTitleVisible: false,
               headerStyle: {
                 backgroundColor: Colors.background,
               },
@@ -263,32 +307,16 @@ function AppNavigator() {
             name="StyleSwipe"
             component={StyleSwipeScreen as any}
             options={{
-              headerShown: true,
+              headerShown: false, // Has custom header
               title: 'AI Stylist',
-              headerStyle: {
-                backgroundColor: Colors.background,
-              },
-              headerTintColor: Colors.primary,
-              headerTitleStyle: {
-                color: Colors.text,
-                fontWeight: '600',
-              },
             }}
           />
           <Stack.Screen
             name="StyleCheck"
             component={StyleCheckScreen as any}
             options={{
-              headerShown: true,
+              headerShown: false, // Has custom header
               title: 'Style Check',
-              headerStyle: {
-                backgroundColor: Colors.background,
-              },
-              headerTintColor: Colors.primary,
-              headerTitleStyle: {
-                color: Colors.text,
-                fontWeight: '600',
-              },
             }}
           />
         </>
@@ -298,6 +326,26 @@ function AppNavigator() {
 }
 
 export default function App() {
+  // Start database health checks on app start
+  React.useEffect(() => {
+    // Check database health immediately
+    DatabaseHealthService.checkHealth().then(health => {
+      if (health.isConnected) {
+        console.log(`✅ Database connected (${health.responseTime}ms)`);
+      } else {
+        console.warn(`⚠️ Database connection issue: ${health.error}`);
+      }
+    });
+
+    // Start periodic health checks (every 30 seconds)
+    DatabaseHealthService.startHealthChecks(30000);
+
+    // Cleanup on unmount
+    return () => {
+      DatabaseHealthService.stopHealthChecks();
+    };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <UserProvider>

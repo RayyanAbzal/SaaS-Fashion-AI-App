@@ -1,19 +1,40 @@
 import { supabase } from './supabase';
 import { WardrobeItem } from '../types';
 
-export async function getUserWardrobe(userId: string): Promise<WardrobeItem[]> {
-  const { data, error } = await supabase
-    .from('wardrobe_items')
-    .select('*')
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+export async function getUserWardrobe(userId: string, retries: number = 2): Promise<WardrobeItem[]> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        console.log(`Retrying getUserWardrobe (attempt ${attempt + 1}/${retries + 1})...`);
+      }
 
-  if (error) {
-    console.error('Error fetching wardrobe:', error);
-    return [];
-  }
+      const { data, error } = await Promise.race([
+        supabase
+          .from('wardrobe_items')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false }),
+        new Promise<{ data: null; error: Error }>((_, reject) =>
+          setTimeout(() => reject(new Error('Wardrobe fetch timeout')), 20000)
+        ),
+      ]);
 
-  return (data || []).map(item => ({
+      if (error) {
+        // If it's a network error and we have retries left, retry
+        if (attempt < retries && (
+          error.message?.includes('timeout') ||
+          error.message?.includes('network') ||
+          error.message?.includes('fetch')
+        )) {
+          continue;
+        }
+        console.error('Error fetching wardrobe:', error);
+        return [];
+      }
+
+      return (data || []).map(item => ({
     id: item.id,
     name: item.name,
     category: item.category,
@@ -26,6 +47,18 @@ export async function getUserWardrobe(userId: string): Promise<WardrobeItem[]> {
     createdAt: new Date(item.created_at),
     updatedAt: new Date(item.updated_at),
   } as WardrobeItem));
+    } catch (error) {
+      // If this is the last attempt, return empty array
+      if (attempt === retries) {
+        console.error('Error fetching wardrobe after retries:', error);
+        return [];
+      }
+      // Otherwise, continue to next retry
+      continue;
+    }
+  }
+  
+  return [];
 }
 
 export async function addWardrobeItem(item: Omit<WardrobeItem, 'id'>): Promise<string> {

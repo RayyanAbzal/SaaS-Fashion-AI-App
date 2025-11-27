@@ -1,11 +1,11 @@
-import { Redis } from '@upstash/redis';
-
 // Initialize Redis client (will use environment variables)
-let redis: Redis | null = null;
+let redis: any = null;
 
 try {
+  const { Redis } = require('@upstash/redis');
   redis = Redis.fromEnv();
 } catch (error) {
+  // Redis is optional - cache will be disabled if not configured
   console.warn('Redis not configured. Caching will be disabled.');
   console.warn('To enable caching, set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN environment variables.');
 }

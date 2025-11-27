@@ -11,10 +11,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import PinterestBoardAnalyzer from '../components/PinterestBoardAnalyzer';
 import PinterestBoardService, { BoardAnalysis, StyleInsight } from '../services/pinterestBoardService';
-import { useAuth } from '../contexts/AuthContext';
+import { useUser } from '../contexts/UserContext';
 
 export default function PinterestStyleScreen() {
-  const { user } = useAuth();
+  const { user } = useUser();
   const [analyzedBoards, setAnalyzedBoards] = useState<BoardAnalysis[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -165,7 +165,7 @@ export default function PinterestStyleScreen() {
       {/* Empty State */}
       {analyzedBoards.length === 0 && !isLoading && (
         <View style={styles.emptyState}>
-          <Ionicons name="pinterest-outline" size={64} color="#E9ECEF" />
+          <Ionicons name="logo-pinterest" size={64} color="#E9ECEF" />
           <Text style={styles.emptyTitle}>Ready to Enhance Your Style?</Text>
           <Text style={styles.emptySubtitle}>
             Your AI stylist already works great! Adding Pinterest boards will make recommendations even more personalized to your unique style preferences.

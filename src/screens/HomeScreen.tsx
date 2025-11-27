@@ -52,26 +52,30 @@ export default function HomeScreen() {
         </View>
 
 
-        {/* AI Stylist Features */}
-        <View style={styles.mainActions}>
-          {/* Feature 1: Ask AI Stylist (Main Feature) */}
+        {/* Main CTA: What Should I Wear Today? */}
+        <View style={styles.mainCTA}>
           <TouchableOpacity
-            style={[styles.mainActionButton, styles.primaryAction]}
+            style={styles.primaryCTAButton}
             onPress={() => navigation.navigate('StyleSwipe', {})}
+            activeOpacity={0.8}
           >
-            <View style={styles.actionContent}>
-              <View style={styles.actionIconContainer}>
-                <Ionicons name="sparkles" size={32} color={Colors.text} />
+            <View style={styles.ctaContent}>
+              <View style={styles.ctaIconContainer}>
+                <Ionicons name="sparkles" size={40} color={Colors.text} />
               </View>
-              <View style={styles.actionTextContainer}>
-                <Text style={styles.actionTitle}>Ask AI Stylist</Text>
-                <Text style={styles.actionSubtitle}>
-                  Get personalized outfit advice and feedback
+              <View style={styles.ctaTextContainer}>
+                <Text style={styles.ctaTitle}>What should I wear today?</Text>
+                <Text style={styles.ctaSubtitle}>
+                  Get instant outfit + perfume recommendations
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={24} color={Colors.text} />
+              <Ionicons name="arrow-forward" size={28} color={Colors.text} />
             </View>
           </TouchableOpacity>
+        </View>
+
+        {/* AI Stylist Features */}
+        <View style={styles.mainActions}>
 
           {/* Feature 2: Style Check */}
           <TouchableOpacity
@@ -118,7 +122,7 @@ export default function HomeScreen() {
           >
             <View style={styles.actionContent}>
               <View style={styles.actionIconContainer}>
-                <Ionicons name="pinterest" size={28} color={Colors.primary} />
+                <Ionicons name="logo-pinterest" size={28} color={Colors.primary} />
               </View>
               <View style={styles.actionTextContainer}>
               <Text style={styles.actionTitle}>Enhance with Pinterest</Text>
@@ -262,6 +266,48 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  mainCTA: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+  },
+  primaryCTAButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 24,
+    padding: 24,
+    elevation: 8,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  ctaContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ctaIconContainer: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 20,
+  },
+  ctaTextContainer: {
+    flex: 1,
+  },
+  ctaTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 6,
+  },
+  ctaSubtitle: {
+    fontSize: 15,
+    color: Colors.text,
+    opacity: 0.9,
+    lineHeight: 20,
   },
   statsContainer: {
     flexDirection: 'row',
@@ -476,9 +522,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: Colors.text,
-  },
-  outfitSwiperContainer: {
-    flex: 1,
-    marginTop: 20,
   },
 }); 

@@ -9,25 +9,71 @@ export async function getOpenAIChatCompletion(messages: { role: 'system' | 'user
   if (!OPENAI_API_KEY) {
     throw new Error('OpenAI API key is missing.');
   }
-  const response = await fetch(OPENAI_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.8,
-      max_tokens: 256,
-    }),
-  });
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OpenAI API error: ${error}`);
+
+  // Use circuit breaker for OpenAI API calls
+  try {
+    const { withCircuitBreaker } = await import('./circuitBreaker');
+    
+    return await withCircuitBreaker(
+      'openai',
+      async () => {
+        const response = await fetch(OPENAI_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature: 0.8,
+            max_tokens: 256,
+          }),
+        });
+        
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`OpenAI API error: ${error}`);
+        }
+        
+        const data = await response.json();
+        return data.choices[0]?.message?.content?.trim() || '';
+      },
+      async () => {
+        // Fallback: return a generic response if OpenAI fails
+        console.warn('OpenAI API unavailable, using fallback response');
+        return "I'm having trouble connecting right now. Please try again in a moment!";
+      },
+      {
+        failureThreshold: 3,  // Open after 3 failures
+        timeout: 10000,       // 10 second timeout
+        resetTimeout: 30000,  // 30 seconds before retry
+      }
+    );
+  } catch (error) {
+    // If circuit breaker not available, use direct call
+    const response = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.8,
+        max_tokens: 256,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI API error: ${errorText}`);
+    }
+    
+    const data = await response.json();
+    return data.choices[0]?.message?.content?.trim() || '';
   }
-  const data = await response.json();
-  return data.choices[0]?.message?.content?.trim() || '';
 }
 
 export function createContextualSystemPrompt(context: ChatContext): string {

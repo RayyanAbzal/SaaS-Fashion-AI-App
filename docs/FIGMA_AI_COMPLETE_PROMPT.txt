@@ -1,0 +1,85 @@
+🎨 DESIGN BRIEF FOR FIGMA AI
+
+I need you to design a complete UI/UX for my React Native fashion AI app. Here's everything you need to know:
+
+📱 APP CONTEXT
+- Repository: https://github.com/RayyanAbzal/SaaS-Fashion-AI-App
+- Tech: React Native + Expo + Supabase + Vercel
+- Target: Gen Z (18-28), fashion enthusiasts
+- Style: TikTok-inspired, dark mode, glassmorphism
+
+🎯 KEY SCREENS TO DESIGN:
+1. HomeScreen - Dashboard with quick actions
+2. StyleSwipeScreen - Main AI Stylist (swipe interface like Tinder/TikTok)
+3. WardrobeScreen - Clothing management (grid/list view)
+4. ProfileScreen - User profile, stats, settings
+5. CameraScreen - Photo capture for wardrobe
+6. OutfitCreationScreen - Manual outfit builder
+7. StyleCheckScreen - AI style analysis
+8. PinterestStyleScreen - Pinterest board analysis
+9. ShoppingAssistantScreen - Product discovery
+10. AvatarSetupScreen - Avatar creation flow
+11. AvatarViewScreen - Avatar viewing
+12. BrandSelectionScreen - Brand preferences
+13. AchievementsScreen - Gamification badges
+
+🎨 DESIGN SYSTEM:
+Colors:
+- Primary: #6366F1 (Indigo)
+- Secondary: #8B5CF6 (Purple)  
+- Accent: #F59E0B (Amber)
+- Background: #0F0F23 (Dark blue-black)
+- Background Secondary: #1E1E3F
+- Text: #FFFFFF / #E2E8F0
+
+UI Patterns:
+- Dark mode first
+- Glassmorphism cards (rgba(255,255,255,0.05))
+- Gradient backgrounds
+- Smooth animations (60fps)
+- Haptic feedback on interactions
+- Swipe gestures (left/right for like/dislike)
+
+📐 REQUIREMENTS:
+✅ All screens must have back buttons (top left)
+✅ Navigation: Bottom tabs (Home, Wardrobe, Profile)
+✅ Modal screens: Camera, OutfitCreation, BrandSelection
+✅ Swipe interface: StyleSwipeScreen (TikTok-style cards)
+✅ Grid/List views: WardrobeScreen (toggleable)
+✅ Loading states: Skeleton screens, spinners
+✅ Empty states: Friendly messages with CTAs
+✅ Error states: Clear error messages with retry
+
+🔄 USER FLOWS:
+1. Onboarding: Sign up → Profile → Brand selection
+2. Daily: Home → Style Swipe → Save favorites
+3. Wardrobe: Add items → Organize → View collection
+4. Style Check: Upload photo → Get AI feedback
+5. Pinterest (optional): Link board → Get insights
+
+💡 KEY FEATURES:
+- Swipe-based outfit suggestions
+- AI color matching
+- Weather-aware suggestions
+- Pinterest integration (optional)
+- Social sharing
+- Achievement system
+- Virtual try-on
+
+🎯 DESIGN INSPIRATION:
+- TikTok: Swipe interface, instant feedback
+- Instagram Stories: Social sharing
+- Pinterest: Board organization
+- Gen Z aesthetics: Bold, colorful, playful
+
+Please create:
+1. Complete design system (colors, typography, components)
+2. All screen designs with proper navigation
+3. Component library (buttons, cards, inputs)
+4. Interaction states (hover, active, disabled)
+5. Responsive layouts for different screen sizes
+6. Dark mode variations
+7. Animation specifications
+
+Reference the full design brief in FIGMA_DESIGN_BRIEF.md for detailed requirements.
+

@@ -14,8 +14,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/colors';
 import { StyleAdviceService } from '../services/styleAdviceService';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../types';
+
+type StyleCheckScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'StyleCheck'>;
 
 export default function StyleCheckScreen() {
+  const navigation = useNavigation<StyleCheckScreenNavigationProp>();
   const [loading, setLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [styleAdvice, setStyleAdvice] = useState<any>(null);
@@ -129,21 +135,37 @@ export default function StyleCheckScreen() {
         <View style={styles.adviceHeader}>
           <Text style={styles.adviceTitle}>Style Analysis</Text>
           
-          {/* Show both /10 score and stars */}
+          {/* Prominent 1-10 Rating Display */}
           <View style={styles.ratingContainer}>
-            <View style={styles.scoreContainer}>
-              <Text style={styles.scoreNumber}>{styleAdvice.overallRating10 || styleAdvice.overallRating * 2}</Text>
+            <View style={styles.scoreCircle}>
+              <Text style={styles.scoreNumber}>
+                {Math.round(styleAdvice.overallRating10 || styleAdvice.overallRating * 2)}
+              </Text>
               <Text style={styles.scoreOutOf}>/10</Text>
             </View>
-            <View style={styles.starsContainer}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Ionicons
-                  key={star}
-                  name={star <= styleAdvice.overallRating ? "star" : "star-outline"}
-                  size={18}
-                  color={star <= styleAdvice.overallRating ? Colors.accent : Colors.backgroundSecondary}
+            <View style={styles.ratingBarContainer}>
+              <View style={styles.ratingBar}>
+                <View 
+                  style={[
+                    styles.ratingBarFill,
+                    { 
+                      width: `${((styleAdvice.overallRating10 || styleAdvice.overallRating * 2) / 10) * 100}%`,
+                      backgroundColor: (styleAdvice.overallRating10 || styleAdvice.overallRating * 2) >= 8 
+                        ? Colors.success 
+                        : (styleAdvice.overallRating10 || styleAdvice.overallRating * 2) >= 6 
+                        ? Colors.warning 
+                        : Colors.error
+                    }
+                  ]}
                 />
-              ))}
+              </View>
+              <Text style={styles.ratingLabel}>
+                {(styleAdvice.overallRating10 || styleAdvice.overallRating * 2) >= 8 
+                  ? '🔥 Excellent!' 
+                  : (styleAdvice.overallRating10 || styleAdvice.overallRating * 2) >= 6 
+                  ? '✨ Great!' 
+                  : '💡 Good start!'}
+              </Text>
             </View>
           </View>
         </View>
@@ -193,10 +215,18 @@ export default function StyleCheckScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Style Check</Text>
-        <Text style={styles.headerSubtitle}>
-          Get instant feedback on your outfit from your AI stylist
-        </Text>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color={Colors.text} />
+        </TouchableOpacity>
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Style Check</Text>
+          <Text style={styles.headerSubtitle}>
+            Get instant feedback on your outfit from your AI stylist
+          </Text>
+        </View>
         
         {/* Skin tone selector */}
         <View style={styles.skinToneContainer}>
@@ -283,6 +313,21 @@ const styles = StyleSheet.create({
   header: {
     padding: 20,
     paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundCard,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    marginTop: 4,
+  },
+  headerContent: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 24,
@@ -405,28 +450,51 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   ratingContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
+    gap: 16,
   },
-  scoreContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+  scoreCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: Colors.backgroundSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 4,
+    borderColor: Colors.primary,
   },
   scoreNumber: {
-    fontSize: 32,
+    fontSize: 48,
     fontWeight: 'bold',
     color: Colors.primary,
+    lineHeight: 56,
   },
   scoreOutOf: {
-    fontSize: 18,
+    fontSize: 20,
     color: Colors.textSecondary,
-    marginLeft: 2,
+    marginTop: -8,
   },
-  starsContainer: {
-    flexDirection: 'row',
-    gap: 2,
+  ratingBarContainer: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ratingBar: {
+    width: '100%',
+    height: 12,
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  ratingBarFill: {
+    height: '100%',
+    borderRadius: 6,
+    transition: 'width 0.5s ease',
+  },
+  ratingLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.text,
   },
   skinToneContainer: {
     marginTop: 16,

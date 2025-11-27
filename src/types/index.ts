@@ -473,16 +473,8 @@ export type RootStackParamList = {
   Login: undefined;
   Camera: { mode?: string };
   BrandSelection: undefined;
-  ClothingRecognition: undefined;
   OutfitCreation: { selectedItems: WardrobeItem[] };
   Achievements: undefined;
-  StylePreferences: undefined;
-  OutfitSwiper: { 
-    preGeneratedOutfit?: any; 
-    emergencyMode?: boolean; 
-    occasion?: string;
-    outfitId?: string;
-  };
   PinterestBoard: undefined;
   AvatarSetup: undefined;
   AvatarView: undefined;

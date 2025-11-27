@@ -7,7 +7,8 @@ import { performanceMiddleware } from '../../middleware/performance';
 import { generateOutfitSchema, validateRequest } from '../../utils/validation';
 import { authenticateRequest, AuthenticatedRequest } from '../../middleware/auth';
 import { cache, cacheKeys } from '../../utils/cache';
-import CountryRoadService from '../../../src/services/countryRoadService';
+// CountryRoadService removed - API should not depend on client-side code
+// Retail items will be fetched directly from retail-products endpoint
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -166,7 +167,20 @@ async function generateOutfits(params: {
   const outfits: OutfitCombination[] = [];
   
   // Get retail items as fallback
-  const retailItems = await CountryRoadService.getItems();
+  // Fetch retail items from the retail-products API endpoint
+  let retailItems: any[] = [];
+  try {
+    const baseUrl = process.env.VERCEL_URL 
+      ? `https://${process.env.VERCEL_URL}` 
+      : 'https://saa-s-fashion-ai-app.vercel.app';
+    const response = await fetch(`${baseUrl}/api/retail-products`);
+    if (response.ok) {
+      const data = await response.json();
+      retailItems = data.products || [];
+    }
+  } catch (error) {
+    console.warn('Could not fetch retail items:', error);
+  }
   
   for (let i = 0; i < params.count; i++) {
     const outfit: OutfitCombination = {
@@ -206,7 +220,7 @@ async function generateOutfits(params: {
   return outfits;
 }
 
-async function handler(req: AuthenticatedRequest, res: VercelResponse) {
+async function handler(req: VercelRequest & AuthenticatedRequest, res: VercelResponse) {
   // Handle CORS
   if (!handleCORS(req, res)) return;
 
@@ -215,14 +229,19 @@ async function handler(req: AuthenticatedRequest, res: VercelResponse) {
 
   // Stricter rate limiting for expensive operation
   if (strictRateLimit) {
-    const identifier = req.user?.id || req.headers['x-forwarded-for'] || req.ip || 'anonymous';
-    const { success } = await strictRateLimit.limit(identifier as string);
-    if (!success) {
-      return res.status(429).json({
-        success: false,
-        error: 'Too many requests',
-        message: 'Please wait before generating more outfits'
-      });
+    try {
+      const identifier = (req as any).user?.id || (req.headers['x-forwarded-for'] as string) || (req as any).ip || 'anonymous';
+      const { success } = await strictRateLimit.limit(identifier as string);
+      if (!success) {
+        return res.status(429).json({
+          success: false,
+          error: 'Too many requests',
+          message: 'Please wait before generating more outfits'
+        });
+      }
+    } catch (error) {
+      // If rate limiting fails, continue anyway
+      console.warn('Rate limiting error:', error);
     }
   }
 
@@ -238,8 +257,13 @@ async function handler(req: AuthenticatedRequest, res: VercelResponse) {
   }
 
   try {
-    // Validate request
-    validateRequest(generateOutfitSchema)(req, res);
+    // Validate request body exists
+    if (!req.body) {
+      return res.status(400).json({
+        success: false,
+        error: 'Request body is required'
+      });
+    }
 
     const { userId, occasion, weather, count = 10, includePinterest } = req.body;
     

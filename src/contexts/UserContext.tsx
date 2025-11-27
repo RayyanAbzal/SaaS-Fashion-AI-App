@@ -33,8 +33,25 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
 
   useEffect(() => {
     console.log('Setting up auth state listener...');
+    
+    // Set a longer timeout to allow for slow network connections
+    const timeoutId = setTimeout(() => {
+      console.warn('⚠️ Auth state check timeout - setting loading to false');
+      setLoading(false);
+      // If we timeout, try to get current user one more time
+      AuthService.getCurrentUser().then(user => {
+        if (user) {
+          setUser(user);
+        }
+      }).catch(() => {
+        // Ignore errors on timeout fallback
+      });
+    }, 10000); // 10 second timeout (increased from 3 to allow for slow networks)
+    
     const unsubscribe = AuthService.onAuthStateChange(async (authUser) => {
       console.log('Auth state changed:', authUser ? 'User logged in' : 'User logged out');
+      clearTimeout(timeoutId); // Clear timeout since we got a response
+      
       try {
         setUser(authUser); // authUser is already the User object from AuthService
         console.log('User state updated:', authUser ? authUser.email : 'null');
@@ -47,7 +64,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
       }
     });
 
-    return unsubscribe;
+    return () => {
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, []);
 
   const login = (loggedInUser: User) => {

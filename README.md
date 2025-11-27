@@ -2,7 +2,7 @@
 
 > **The dopamine-driven React Native fashion app for Gen Z students with short attention spans**
 
-StyleMate is a revolutionary fashion app designed specifically for college students who want instant outfit decisions, social validation, and addictive engagement patterns. Built with React Native, Expo, and Firebase, it delivers a TikTok-style experience for fashion discovery.
+StyleMate is a revolutionary fashion app designed specifically for college students who want instant outfit decisions, social validation, and addictive engagement patterns. Built with React Native, Expo, and Supabase, it delivers a TikTok-style experience for fashion discovery.
 
 ## ✨ **Key Features**
 
@@ -57,11 +57,12 @@ StyleMate is a revolutionary fashion app designed specifically for college stude
 ## 🛠 **Tech Stack**
 
 - **Frontend**: React Native + Expo (TypeScript)
-- **Backend**: Firebase (Auth, Firestore, Storage)
+- **Backend**: Supabase (Auth, Database, Storage) + Vercel (API)
 - **AI**: OpenAI Vision API (clothing recognition)
 - **Navigation**: React Navigation with smooth transitions
 - **UI**: Linear gradients, glassmorphism, haptics
 - **Animations**: React Native Reanimated
+- **Deployment**: Vercel (Backend API)
 
 ## 🚀 **Quick Start**
 
@@ -69,7 +70,7 @@ StyleMate is a revolutionary fashion app designed specifically for college stude
 - Node.js (v16 or higher)
 - Expo CLI (`npm install -g @expo/cli`)
 - iOS Simulator or Android Emulator
-- Firebase project setup
+- Supabase account (free tier available)
 
 ### Installation
 
@@ -84,10 +85,11 @@ StyleMate is a revolutionary fashion app designed specifically for college stude
    npm install
    ```
 
-3. **Configure Firebase**
-   - Create a Firebase project
-   - Enable Authentication and Firestore
-   - Update `src/services/firebase.ts` with your config
+3. **Configure Supabase**
+   - Create a Supabase project at [supabase.com](https://supabase.com)
+   - Get your Project URL and anon key from Settings → API
+   - Create a `.env` file with your Supabase credentials (see Environment Variables below)
+   - Run the SQL setup scripts from `SUPABASE_SETUP.md` to create database tables
 
 4. **Start the development server**
    ```bash
@@ -105,20 +107,26 @@ StyleMate is a revolutionary fashion app designed specifically for college stude
 
 ## 📱 **App Structure**
 
+See `ARCHITECTURE.md` for detailed architecture documentation.
+
 ```
 src/
 ├── components/          # Reusable UI components
-├── constants/          # Colors, gradients, themes
-├── screens/           # Main app screens
-│   ├── StyleMateScreen.tsx    # Main swipe interface
-│   ├── StyleMomentsScreen.tsx # Stories-style sharing
-│   ├── WardrobeScreen.tsx     # Clothing management
-│   ├── ProfileScreen.tsx      # User profile & stats
-│   └── LoginScreen.tsx        # Authentication
-├── services/          # Firebase & API services
-├── types/            # TypeScript interfaces
-└── utils/            # Helper functions
+├── screens/            # Screen components
+├── services/           # Business logic & API services
+├── contexts/           # React Context providers
+├── types/              # TypeScript type definitions
+├── utils/              # Utility functions
+├── constants/          # App constants
+└── config/             # Configuration files
 ```
+
+## 📚 **Documentation**
+
+- **Setup**: See `docs/SETUP.md`
+- **Architecture**: See `ARCHITECTURE.md`
+- **Troubleshooting**: See `docs/TROUBLESHOOTING.md`
+- **Implementation**: See `IMPLEMENTATION_SUMMARY.md`
 
 ## 🎯 **Core Screens**
 
@@ -223,15 +231,20 @@ npm run build:ios
 ```
 
 ### **Environment Variables**
-Create a `.env` file:
+Create a `.env` file in the project root:
+```bash
+# Supabase Configuration
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+
+# OpenAI API Key (Optional - for AI features)
+EXPO_PUBLIC_OPENAI_API_KEY=your-openai-key-here
+
+# Weather API Key (Optional)
+OPENWEATHER_API_KEY=your-weather-key-here
 ```
-FIREBASE_API_KEY=your_api_key
-FIREBASE_AUTH_DOMAIN=your_auth_domain
-FIREBASE_PROJECT_ID=your_project_id
-FIREBASE_STORAGE_BUCKET=your_storage_bucket
-FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-FIREBASE_APP_ID=your_app_id
-```
+
+See `SUPABASE_SETUP.md` for detailed setup instructions.
 
 ## 🚀 **Deployment**
 
@@ -267,7 +280,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Gen Z Research**: Understanding short attention spans and instant gratification needs
 - **TikTok UX**: Inspiration for swipe-based interactions
 - **Instagram Stories**: Reference for social sharing patterns
-- **Firebase**: Backend infrastructure and real-time capabilities
+- **Supabase**: Backend infrastructure (Auth, Database, Storage)
+- **Vercel**: Serverless API deployment
 - **Expo**: Cross-platform development framework
 
 ## 📞 **Support**
@@ -343,9 +357,13 @@ const suggestion = await generateOutfitSuggestionWithContext(
 ## Getting Started
 
 1. Install dependencies: `npm install`
-2. Configure Firebase in `src/services/firebase.ts`
-3. Add your OpenAI API key to `app.json`
-4. Run: `npx expo start`
+2. Configure Supabase (see `SUPABASE_SETUP.md` for detailed instructions):
+   - Create a Supabase project
+   - Run the SQL scripts to create database tables
+   - Create storage buckets for images
+3. Create a `.env` file with your Supabase credentials
+4. (Optional) Add your OpenAI API key to `.env` for AI features
+5. Run: `npx expo start -c`
 
 ## Tech Stack
 
@@ -357,45 +375,42 @@ const suggestion = await generateOutfitSuggestionWithContext(
 
 ## 🔧 **Environment Setup**
 
-1. Create a `.env` file in the root directory with the following variables:
+1. **Create a `.env` file** in the root directory:
 ```bash
-# OpenAI API Key for Vision and Chat features
+# Supabase Configuration (Required)
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+
+# OpenAI API Key (Optional - for AI features)
 EXPO_PUBLIC_OPENAI_API_KEY=your_openai_api_key_here
 
-# Firebase Configuration
-EXPO_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key_here
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-EXPO_PUBLIC_FIREBASE_APP_ID=your_app_id
-
-# Weather API Key for outfit suggestions
-EXPO_PUBLIC_WEATHER_API_KEY=your_weather_api_key_here
+# Weather API Key (Optional)
+OPENWEATHER_API_KEY=your_weather_api_key_here
 ```
 
 2. **Getting the API Keys:**
 
-   - **OpenAI API Key**: 
+   - **Supabase Configuration** (Required):
+     1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
+     2. Create a new project or select existing one
+     3. Go to Settings → API
+     4. Copy the Project URL and anon public key
+     5. See `SUPABASE_SETUP.md` for database setup instructions
+
+   - **OpenAI API Key** (Optional):
      1. Go to [OpenAI's platform](https://platform.openai.com/)
      2. Create an account or sign in
      3. Navigate to API Keys section
      4. Create a new secret key
 
-   - **Firebase Configuration**:
-     1. Go to [Firebase Console](https://console.firebase.google.com/)
-     2. Create a new project or select existing one
-     3. Add a web app to your project
-     4. Copy the configuration values from the provided config object
-
-   - **Weather API Key**:
+   - **Weather API Key** (Optional):
      1. Go to [OpenWeatherMap](https://openweathermap.org/api)
      2. Sign up for a free account
      3. Navigate to API Keys section
      4. Copy your API key
 
 3. **Security Notes**:
-   - Never commit the `.env` file to version control
+   - Never commit the `.env` file to version control (it's in `.gitignore`)
    - Keep your API keys secure and rotate them regularly
    - Use appropriate API key restrictions in your provider dashboards
    - Monitor API usage for any suspicious activity 

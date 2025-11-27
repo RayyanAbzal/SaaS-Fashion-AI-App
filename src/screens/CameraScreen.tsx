@@ -93,7 +93,7 @@ export default function CameraScreen() {
 
   const handleCapture = async () => {
     if (capturedImage) {
-      (navigation as any).navigate('Wardrobe', { capturedImageUri: capturedImage.uri });
+      navigation.navigate('Wardrobe', { capturedImageUri: capturedImage.uri });
     }
   };
 
@@ -153,7 +153,7 @@ export default function CameraScreen() {
       {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity style={styles.closeButton} onPress={handleCancel}>
-          <Ionicons name="close" size={28} color={Colors.text} />
+          <Ionicons name="arrow-back" size={28} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Take Photo</Text>
         <View style={{ width: 28 }} />

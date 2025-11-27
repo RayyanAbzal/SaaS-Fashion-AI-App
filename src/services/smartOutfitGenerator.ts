@@ -471,7 +471,7 @@ class SmartOutfitGenerator {
     return 'Select pieces that fit well and make you feel confident';
   }
 
-  // Generate why it works
+  // Generate detailed why it works reasoning
   private static generateWhyItWorks(
     items: SmartOutfitItem[],
     occasion: string,
@@ -479,39 +479,91 @@ class SmartOutfitGenerator {
     colorAnalysis: ColorAnalysis
   ): string[] {
     const reasons = [];
+    const temp = weather.temperature;
+    const condition = weather.condition?.toLowerCase() || '';
     
-    // Color reasons
+    // Color harmony reasoning
     if (colorAnalysis.harmony === 'complementary') {
-      reasons.push('Complementary colors create visual interest and balance');
-    }
-    if (colorAnalysis.harmony === 'monochromatic') {
-      reasons.push('Monochromatic scheme creates a sophisticated, cohesive look');
-    }
-
-    // Weather reasons
-    if (weather.temperature > 25) {
-      reasons.push('Light, breathable materials keep you comfortable in warm weather');
-    }
-    if (weather.temperature < 15) {
-      reasons.push('Appropriate layering provides warmth without bulk');
+      reasons.push(`The complementary color scheme (${colorAnalysis.primaryColor} and ${colorAnalysis.secondaryColor || 'accent'}) creates visual interest while maintaining balance - perfect for making a statement`);
+    } else if (colorAnalysis.harmony === 'monochromatic') {
+      reasons.push(`The monochromatic ${colorAnalysis.primaryColor} palette creates a sophisticated, cohesive look that elongates your silhouette and appears effortlessly polished`);
+    } else if (colorAnalysis.harmony === 'neutral') {
+      reasons.push(`The neutral color palette provides maximum versatility - these pieces work together seamlessly and can be mixed with other items in your wardrobe`);
+    } else if (colorAnalysis.harmony === 'analogous') {
+      reasons.push(`The harmonious color combination creates a flowing, cohesive appearance that's easy on the eyes and feels naturally put together`);
     }
 
-    // Occasion reasons
-    if (occasion === 'work') {
-      reasons.push('Professional styling appropriate for workplace environment');
-    }
-    if (occasion === 'casual') {
-      reasons.push('Comfortable, versatile pieces perfect for everyday activities');
+    // Weather-specific reasoning
+    if (temp > 25) {
+      const breathableItems = items.filter(item => item.materialProperties?.breathability >= 7);
+      if (breathableItems.length > 0) {
+        reasons.push(`Light, breathable materials (${breathableItems.map(i => i.material || 'fabric').join(', ')}) keep you cool and comfortable in ${temp}°C weather`);
+      } else {
+        reasons.push(`The outfit is designed for warm weather - lighter fabrics and relaxed fits prevent overheating in ${temp}°C temperatures`);
+      }
+    } else if (temp < 15) {
+      const warmItems = items.filter(item => item.materialProperties?.warmth >= 7);
+      if (warmItems.length > 0) {
+        reasons.push(`Layered pieces with insulating materials (${warmItems.map(i => i.material || 'fabric').join(', ')}) provide warmth without bulk in ${temp}°C weather`);
+      } else {
+        reasons.push(`The combination creates effective layering that traps body heat, keeping you warm in cooler ${temp}°C temperatures`);
+      }
+    } else {
+      reasons.push(`The materials and layering are perfectly balanced for ${temp}°C - comfortable without being too warm or too cool`);
     }
 
-    // Material reasons
+    // Weather condition reasoning
+    if (condition.includes('rain')) {
+      const waterResistant = items.some(item => item.materialProperties?.waterResistance >= 6);
+      if (waterResistant) {
+        reasons.push(`Water-resistant materials protect you from the rain while maintaining style - practical and fashionable`);
+      } else {
+        reasons.push(`Consider adding a water-resistant layer for rainy conditions, but the base outfit works well for indoor transitions`);
+      }
+    } else if (condition.includes('sun') || condition.includes('clear')) {
+      reasons.push(`The outfit is perfect for sunny conditions - colors and materials won't fade or overheat in direct sunlight`);
+    }
+
+    // Occasion-specific reasoning
+    if (occasion === 'work' || occasion === 'professional') {
+      const hasBlazer = items.some(item => item.category?.toLowerCase().includes('blazer') || item.name?.toLowerCase().includes('blazer'));
+      if (hasBlazer) {
+        reasons.push(`Professional styling with structured pieces (like the blazer) elevates the look for workplace environments while remaining comfortable`);
+      } else {
+        reasons.push(`The combination strikes the right balance between professional and approachable - appropriate for office settings while maintaining personal style`);
+      }
+    } else if (occasion === 'casual') {
+      reasons.push(`Comfortable, versatile pieces perfect for everyday activities - easy to move in and suitable for various casual settings`);
+    } else if (occasion === 'date') {
+      reasons.push(`Stylish details and flattering silhouettes make this perfect for a date - confident and put-together without being overdone`);
+    } else if (occasion === 'party') {
+      reasons.push(`The outfit makes a statement perfect for parties - eye-catching elements that stand out in social settings`);
+    }
+
+    // Material compatibility reasoning
     const materials = items.map(item => item.materialProperties);
-    const seasonMatch = materials.every(mat => mat.seasonality.includes(weather.season));
+    const seasonMatch = materials.every(mat => mat?.seasonality?.includes(weather.season));
     if (seasonMatch) {
-      reasons.push('Materials are seasonally appropriate and comfortable');
+      reasons.push(`All materials are seasonally appropriate for ${weather.season} - ensuring comfort and style alignment with the weather`);
     }
 
-    return reasons;
+    // Fit and silhouette reasoning
+    const hasFitted = items.some(item => item.fit === 'fitted' || item.fit === 'slim');
+    const hasRelaxed = items.some(item => item.fit === 'relaxed' || item.fit === 'loose');
+    if (hasFitted && hasRelaxed) {
+      reasons.push(`The balanced fit combination (fitted and relaxed pieces) creates a flattering silhouette that's both comfortable and stylish`);
+    } else if (hasFitted) {
+      reasons.push(`The fitted silhouette creates a polished, put-together appearance that's flattering and professional`);
+    } else if (hasRelaxed) {
+      reasons.push(`The relaxed fit prioritizes comfort while maintaining style - perfect for all-day wear`);
+    }
+
+    // Ensure we have at least 3 reasons
+    if (reasons.length < 3) {
+      reasons.push(`This combination works well together - the pieces complement each other in style, color, and occasion appropriateness`);
+    }
+
+    return reasons.slice(0, 4); // Return top 4 reasons
   }
 }
 
