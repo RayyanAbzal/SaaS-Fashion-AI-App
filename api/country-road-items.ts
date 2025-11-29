@@ -95,11 +95,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     }
     
     // Filter by category if provided
-    if (category && items.length > 0 && source === 'scraped') {
-      items = items.filter(item => 
-        item.category.toLowerCase() === category.toLowerCase()
-      );
-    } else if (category && source === 'fallback') {
+    if (category && items.length > 0) {
       items = items.filter(item => 
         item.category.toLowerCase() === category.toLowerCase()
       );
