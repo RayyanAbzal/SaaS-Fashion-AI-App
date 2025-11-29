@@ -57,13 +57,15 @@ async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const category = req.query.category as string;
+    const nocache = req.query.nocache === '1' || req.query.nocache === 'true';
     
-    // Check cache
+    // Check cache (skip if nocache is set)
     const cacheKey = cacheKeys.countryRoadItems(category);
-    const cached = await cache.get(cacheKey);
-    
-    if (cached) {
-      return res.status(200).json(cached);
+    if (!nocache) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        return res.status(200).json(cached);
+      }
     }
     
     console.log('Fetching Country Road items...');

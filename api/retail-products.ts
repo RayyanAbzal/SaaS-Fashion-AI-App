@@ -51,16 +51,19 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { category, color, formality, minTemp, maxTemp } = req.query;
+    const { category, color, formality, minTemp, maxTemp, nocache } = req.query;
     
     // Create cache key from filters
     const filterKey = JSON.stringify({ category, color, formality, minTemp, maxTemp });
     const cacheKey = cacheKeys.retailProducts(filterKey);
     
-    // Check cache
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      return res.status(200).json(cached);
+    // Check cache (skip if nocache is set)
+    const skipCache = nocache === '1' || nocache === 'true';
+    if (!skipCache) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        return res.status(200).json(cached);
+      }
     }
     
     // Fetch ONLY real scraped products - NO STATIC DATA
