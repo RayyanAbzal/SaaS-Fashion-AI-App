@@ -1,7 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import axios from 'axios';
-import * as cheerio from 'cheerio';
 import { asyncHandler, errorHandler } from './utils/errorHandler';
+import { scrapeCountryRoadProducts } from './utils/scraper';
 import { handleCORS } from './utils/cors';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 import { performanceMiddleware } from './middleware/performance';
@@ -188,18 +187,12 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     let source = 'static';
     
     try {
-      // Call our own country-road-items endpoint to get scraped data
-      const baseUrl = process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}` 
-        : 'https://saa-s-fashion-ai-app.vercel.app';
+      // Scrape Country Road products directly
+      const scrapedProducts = await scrapeCountryRoadProducts(category as string);
       
-      const countryRoadResponse = await axios.get(`${baseUrl}/api/country-road-items`, {
-        timeout: 15000,
-      });
-      
-      if (countryRoadResponse.data && countryRoadResponse.data.items && countryRoadResponse.data.items.length > 0) {
-        // Convert Country Road items to RetailProduct format
-        const scrapedProducts: RetailProduct[] = countryRoadResponse.data.items.map((item: any) => ({
+      if (scrapedProducts && scrapedProducts.length > 0) {
+        // Convert scraped products to RetailProduct format
+        const convertedProducts: RetailProduct[] = scrapedProducts.map(item => ({
           id: item.id,
           name: item.name,
           price: item.price,
@@ -215,14 +208,14 @@ async function handler(req: VercelRequest, res: VercelResponse) {
           weatherSuitability: item.weatherSuitability,
         }));
         
-        allProducts = [...scrapedProducts, ...retailProducts];
-        source = countryRoadResponse.data.source === 'scraped' ? 'scraped' : 'mixed';
-        console.log(`Fetched ${scrapedProducts.length} products from Country Road scraper`);
+        allProducts = [...convertedProducts, ...retailProducts];
+        source = 'scraped';
+        console.log(`Fetched ${convertedProducts.length} products from Country Road scraper`);
       } else {
         allProducts = [...retailProducts];
       }
     } catch (error) {
-      console.error('Error fetching Country Road products:', error);
+      console.error('Error scraping Country Road products:', error);
       // Fall back to static products
       allProducts = [...retailProducts];
     }
