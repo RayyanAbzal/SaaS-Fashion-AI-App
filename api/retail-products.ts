@@ -28,126 +28,6 @@ interface RetailProduct {
   };
 }
 
-// Sample retail products from various Australian retailers
-const retailProducts: RetailProduct[] = [
-  // Country Road items
-  {
-    id: 'cr-white-shirt',
-    name: 'Classic White Shirt',
-    price: 89,
-    originalPrice: 120,
-    image: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=300&h=300&fit=crop',
-    category: 'Tops',
-    subcategory: 'Shirts',
-    color: 'White',
-    brand: 'Country Road',
-    url: 'https://countryroad.com.au/classic-white-shirt',
-    inStock: true,
-    formality: 'business',
-    weatherSuitability: {
-      minTemp: 15,
-      maxTemp: 30,
-      conditions: ['sunny', 'partly-cloudy']
-    }
-  },
-  {
-    id: 'cr-denim-jacket',
-    name: 'Denim Jacket',
-    price: 129,
-    originalPrice: 159,
-    image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=300&h=300&fit=crop',
-    category: 'Outerwear',
-    subcategory: 'Jackets',
-    color: 'Blue',
-    brand: 'Country Road',
-    url: 'https://countryroad.com.au/denim-jacket',
-    inStock: true,
-    formality: 'casual',
-    weatherSuitability: {
-      minTemp: 10,
-      maxTemp: 25,
-      conditions: ['sunny', 'partly-cloudy', 'cloudy']
-    }
-  },
-  // Witchery items
-  {
-    id: 'witchery-blazer',
-    name: 'Tailored Blazer',
-    price: 199,
-    originalPrice: 249,
-    image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop',
-    category: 'Outerwear',
-    subcategory: 'Blazers',
-    color: 'Black',
-    brand: 'Witchery',
-    url: 'https://witchery.com.au/tailored-blazer',
-    inStock: true,
-    formality: 'business',
-    weatherSuitability: {
-      minTemp: 10,
-      maxTemp: 25,
-      conditions: ['sunny', 'partly-cloudy', 'cloudy']
-    }
-  },
-  {
-    id: 'witchery-dress',
-    name: 'Midi Dress',
-    price: 149,
-    originalPrice: 199,
-    image: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=300&h=300&fit=crop',
-    category: 'Dresses',
-    subcategory: 'Midi',
-    color: 'Navy',
-    brand: 'Witchery',
-    url: 'https://witchery.com.au/midi-dress',
-    inStock: true,
-    formality: 'smart-casual',
-    weatherSuitability: {
-      minTemp: 15,
-      maxTemp: 30,
-      conditions: ['sunny', 'partly-cloudy']
-    }
-  },
-  // Seed Heritage items
-  {
-    id: 'seed-heritage-jeans',
-    name: 'High Rise Jeans',
-    price: 89,
-    originalPrice: 119,
-    image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=300&h=300&fit=crop',
-    category: 'Bottoms',
-    subcategory: 'Jeans',
-    color: 'Blue',
-    brand: 'Seed Heritage',
-    url: 'https://seedheritage.com.au/high-rise-jeans',
-    inStock: true,
-    formality: 'casual',
-    weatherSuitability: {
-      minTemp: 10,
-      maxTemp: 30,
-      conditions: ['sunny', 'partly-cloudy', 'cloudy']
-    }
-  },
-  {
-    id: 'seed-heritage-knit',
-    name: 'Cable Knit Sweater',
-    price: 79,
-    originalPrice: 99,
-    image: 'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=300&h=300&fit=crop',
-    category: 'Tops',
-    subcategory: 'Sweaters',
-    color: 'Cream',
-    brand: 'Seed Heritage',
-    url: 'https://seedheritage.com.au/cable-knit-sweater',
-    inStock: true,
-    formality: 'smart-casual',
-    weatherSuitability: {
-      minTemp: 5,
-      maxTemp: 20,
-      conditions: ['cloudy', 'rainy']
-    }
-  }
-];
 
 async function handler(req: VercelRequest, res: VercelResponse) {
   // Handle CORS
@@ -183,9 +63,9 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(cached);
     }
     
-    // Try to fetch real products from Country Road
+    // Fetch ONLY real scraped products - NO STATIC DATA
     let allProducts: RetailProduct[] = [];
-    let source = 'static';
+    let source: 'scraped' | 'empty' | 'error' = 'empty';
     
     try {
       // Scrape Country Road products directly
@@ -209,16 +89,19 @@ async function handler(req: VercelRequest, res: VercelResponse) {
           weatherSuitability: item.weatherSuitability,
         }));
         
-        allProducts = [...convertedProducts, ...retailProducts];
+        allProducts = convertedProducts; // ONLY scraped products
         source = 'scraped';
         console.log(`Fetched ${convertedProducts.length} products from Country Road scraper`);
       } else {
-        allProducts = [...retailProducts];
+        allProducts = [];
+        source = 'empty';
+        console.log('No products scraped - returning empty array');
       }
     } catch (error) {
       console.error('Error scraping Country Road products:', error);
-      // Fall back to static products
-      allProducts = [...retailProducts];
+      // Return empty array - NO STATIC FALLBACK
+      allProducts = [];
+      source = 'error';
     }
     
     let filteredProducts = allProducts;
