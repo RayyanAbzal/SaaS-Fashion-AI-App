@@ -126,7 +126,7 @@ import { rateLimitMiddleware } from './middleware/rateLimit';
 import { performanceMiddleware } from './middleware/performance';
 import { optionalAuth } from './middleware/auth';
 import { cache, cacheKeys } from './utils/cache';
-import { scrapeCountryRoadProducts } from './utils/scraper';
+
 
 async function handler(req: VercelRequest, res: VercelResponse) {
   // Handle CORS

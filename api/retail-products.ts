@@ -1,6 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { asyncHandler, errorHandler } from './utils/errorHandler';
-import { scrapeCountryRoadProducts } from './utils/scraper';
+
 import { handleCORS } from './utils/cors';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 import { performanceMiddleware } from './middleware/performance';
