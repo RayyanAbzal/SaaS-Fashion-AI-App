@@ -1,4 +1,6 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 import { asyncHandler, errorHandler } from './utils/errorHandler';
 import { handleCORS } from './utils/cors';
 import { rateLimitMiddleware } from './middleware/rateLimit';
@@ -181,7 +183,51 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(cached);
     }
     
-    let filteredProducts = [...retailProducts];
+    // Try to fetch real products from Country Road
+    let allProducts: RetailProduct[] = [];
+    let source = 'static';
+    
+    try {
+      // Call our own country-road-items endpoint to get scraped data
+      const baseUrl = process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}` 
+        : 'https://saa-s-fashion-ai-app.vercel.app';
+      
+      const countryRoadResponse = await axios.get(`${baseUrl}/api/country-road-items`, {
+        timeout: 15000,
+      });
+      
+      if (countryRoadResponse.data && countryRoadResponse.data.items && countryRoadResponse.data.items.length > 0) {
+        // Convert Country Road items to RetailProduct format
+        const scrapedProducts: RetailProduct[] = countryRoadResponse.data.items.map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          originalPrice: item.originalPrice,
+          image: item.image,
+          category: item.category,
+          subcategory: item.subcategory,
+          color: item.color,
+          brand: item.brand,
+          url: item.url,
+          inStock: item.inStock,
+          formality: item.formality,
+          weatherSuitability: item.weatherSuitability,
+        }));
+        
+        allProducts = [...scrapedProducts, ...retailProducts];
+        source = countryRoadResponse.data.source === 'scraped' ? 'scraped' : 'mixed';
+        console.log(`Fetched ${scrapedProducts.length} products from Country Road scraper`);
+      } else {
+        allProducts = [...retailProducts];
+      }
+    } catch (error) {
+      console.error('Error fetching Country Road products:', error);
+      // Fall back to static products
+      allProducts = [...retailProducts];
+    }
+    
+    let filteredProducts = allProducts;
     
     // Filter by category
     if (category) {
@@ -219,6 +265,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
       success: true,
       products: filteredProducts,
       count: filteredProducts.length,
+      source: source,
       filters: {
         category,
         color,
@@ -231,7 +278,7 @@ async function handler(req: VercelRequest, res: VercelResponse) {
     // Cache for 30 minutes
     await cache.set(cacheKey, response, 1800);
     
-    console.log(`Returning ${filteredProducts.length} retail products`);
+    console.log(`Returning ${filteredProducts.length} retail products (source: ${source})`);
     res.status(200).json(response);
 
   } catch (error) {
