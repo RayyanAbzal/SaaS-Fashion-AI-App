@@ -121,6 +121,7 @@ const fallbackItems: CountryRoadItem[] = [
 ];
 
 import { asyncHandler, errorHandler } from './utils/errorHandler';
+import { scrapeCountryRoadProducts } from './utils/scraper';n
 import { handleCORS } from './utils/cors';
 import { rateLimitMiddleware } from './middleware/rateLimit';
 import { performanceMiddleware } from './middleware/performance';

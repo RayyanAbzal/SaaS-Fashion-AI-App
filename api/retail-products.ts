@@ -1,3 +1,4 @@
+import { scrapeCountryRoadProducts } from './utils/scraper';
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { asyncHandler, errorHandler } from './utils/errorHandler';
 
